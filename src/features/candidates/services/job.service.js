@@ -211,8 +211,71 @@ class JobService {
                             {
                                 $lookup: {
                                     from: 'skills',
-                                    localField: 'skillRequired.skillId',
-                                    foreignField: '_id',
+                                    let: { skillIds: '$skillRequired.skillId', skillRequired: '$skillRequired' },
+                                    pipeline: [
+                                        {
+                                            $match: {
+                                                $expr: {
+                                                    $in: [
+                                                        { $toString: '$_id' },
+                                                        '$$skillIds'
+                                                    ]
+                                                }
+                                            }
+                                        },
+                                        {
+                                            $addFields: {
+                                                rating: {
+                                                    $let: {
+                                                        vars: {
+                                                            matchedSkill: {
+                                                                $arrayElemAt: [
+                                                                    {
+                                                                        $filter: {
+                                                                            input: '$$skillRequired',
+                                                                            as: 'req',
+                                                                            cond: {
+                                                                                $eq: [
+                                                                                    { $toString: '$$req.skillId' },
+                                                                                    { $toString: '$_id' }
+                                                                                ]
+                                                                            }
+                                                                        }
+                                                                    },
+                                                                    0
+                                                                ]
+                                                            }
+                                                        },
+                                                        in: '$$matchedSkill.rating'
+                                                    }
+                                                },
+                                                requiredExperience: {
+                                                    $let: {
+                                                        vars: {
+                                                            matchedSkill: {
+                                                                $arrayElemAt: [
+                                                                    {
+                                                                        $filter: {
+                                                                            input: '$$skillRequired',
+                                                                            as: 'req',
+                                                                            cond: {
+                                                                                $eq: [
+                                                                                    { $toString: '$$req.skillId' },
+                                                                                    { $toString: '$_id' }
+                                                                                ]
+                                                                            }
+                                                                        }
+                                                                    },
+                                                                    0
+                                                                ]
+                                                            }
+                                                        },
+                                                        in: '$$matchedSkill.requiredExperience'
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    ],
                                     as: 'skillDetails'
                                 }
                             },
@@ -230,7 +293,6 @@ class JobService {
                                     country: 1,
                                     postedOn: 1,
                                     lastDate: 1,
-                                    skillRequired: 1,
                                     jobRole: 1,
                                     matchScore: 1,
                                     matchPercentage: 1,
@@ -239,7 +301,6 @@ class JobService {
                                     skillDetails: 1,
                                     openings: 1,
                                     applicationsCount: 1,
-                                    // Extract company name from populated company info
                                     companyName: { 
                                         $ifNull: [
                                             { $arrayElemAt: ['$companyInfo.companyName', 0] },
