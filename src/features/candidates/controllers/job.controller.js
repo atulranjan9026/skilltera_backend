@@ -22,6 +22,7 @@ exports.getRankingJobs = asyncHandler(async (req, res) => {
         page: req.query.page,
         limit: req.query.limit,
         location: req.query.location,
+        jobTitle: req.query.jobTitle,
         jobType: req.query.jobType,
         experienceLevel: req.query.experienceLevel,
         minSalary: req.query.minSalary,
@@ -41,37 +42,16 @@ exports.getRankingJobs = asyncHandler(async (req, res) => {
     response.send(res);
 });
 
-/**
- * @route   GET /api/v1/candidate/job/:jobId
- * @desc    Get job details by ID
- * @access  Private
- */
-exports.getJobById = asyncHandler(async (req, res) => {
-    const { jobId } = req.params;
-
-    // Increment view count
-    await jobService.incrementJobViews(jobId);
-
-    // Get job details
-    const job = await jobService.getJobById(jobId);
-
-    const response = new ApiResponse(
-        HTTP_STATUS.OK,
-        job,
-        'Job details retrieved successfully'
-    );
-
-    response.send(res);
-});
 
 /**
- * @route   GET /api/v1/candidate/job/search
- * @desc    Search jobs by text query
+ * @route   GET /api/v1/candidate/job/suggestions
+ * @desc    Get job title/company suggestions
  * @access  Private
- * @query   q (search query), page, limit
+ * @query   q (search query), limit
  */
-exports.searchJobs = asyncHandler(async (req, res) => {
+exports.getJobSuggestions = asyncHandler(async (req, res) => {
     const { q: query } = req.query;
+    const limit = parseInt(req.query.limit) || 8;
 
     if (!query) {
         const response = new ApiResponse(
@@ -82,18 +62,46 @@ exports.searchJobs = asyncHandler(async (req, res) => {
         return response.send(res);
     }
 
-    const options = {
-        page: req.query.page,
-        limit: req.query.limit
-    };
-
-    const result = await jobService.searchJobs(query, options);
+    const result = await jobService.getJobSuggestions(query, limit);
 
     const response = new ApiResponse(
         HTTP_STATUS.OK,
         result,
-        'Search results retrieved successfully'
+        'Suggestions retrieved successfully'
     );
 
     response.send(res);
 });
+
+/**
+ * @route   GET /api/v1/candidate/job/location-suggestions
+ * @desc    Get location suggestions
+ * @access  Private
+ * @query   q (search query), limit
+ */
+exports.getLocationSuggestions = asyncHandler(async (req, res) => {
+    const { q: query } = req.query;
+    const limit = parseInt(req.query.limit) || 8;
+
+    if (!query) {
+        const response = new ApiResponse(
+            HTTP_STATUS.BAD_REQUEST,
+            null,
+            'Search query is required'
+        );
+        return response.send(res);
+    }
+
+    const result = await jobService.getLocationSuggestions(query, limit);
+
+    const response = new ApiResponse(
+        HTTP_STATUS.OK,
+        result,
+        'Location suggestions retrieved successfully'
+    );
+
+    response.send(res);
+});
+
+
+

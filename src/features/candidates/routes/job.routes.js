@@ -21,16 +21,13 @@ router.use(authenticate);
 router.get('/ranking', jobController.getRankingJobs);
 
 /**
- * @route   GET /api/v1/candidate/job/search
- * @desc    Search jobs by text query
- * @query   q (search query), page, limit
+ * @route   GET /api/v1/candidate/job/suggestions
+ * @desc    Autocomplete job titles/companies
  */
-router.get('/search', jobController.searchJobs);
+router.get('/suggestions', jobController.getJobSuggestions);
 
-/**
- * @route   GET /api/v1/candidate/job/:jobId
- * @desc    Get job details by ID
- */
-router.get('/:jobId', jobController.getJobById);
+
+router.get('/location-suggestions', jobController.getLocationSuggestions);
+
 
 module.exports = router;

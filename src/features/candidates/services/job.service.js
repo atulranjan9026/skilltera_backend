@@ -63,13 +63,15 @@ class JobService {
                 // Note: Old backend doesn't filter by status for general job listings
             };
 
-            // Apply filters
-            if (options.jobTitle) {
-                baseQuery.jobTitle = new RegExp(options.jobTitle, 'i');
-            }
+            const jobTitleRegex = options.jobTitle ? new RegExp(options.jobTitle, 'i') : null;
 
             if (options.location) {
-                baseQuery.city = new RegExp(options.location, 'i');
+                // Search across city, state, and country fields
+                baseQuery.$or = [
+                    { city: new RegExp(options.location, 'i') },
+                    { state: new RegExp(options.location, 'i') },
+                    { country: new RegExp(options.location, 'i') }
+                ];
             }
 
             if (options.jobType) {
@@ -99,6 +101,45 @@ class JobService {
             // Build aggregation pipeline for skill matching and scoring
             const pipeline = [
                 { $match: baseQuery },
+                {
+                    $lookup: {
+                        from: 'companies',
+                        let: { companyIdStr: '$companyId' },
+                        pipeline: [
+                            {
+                                $match: {
+                                    $expr: {
+                                        $eq: [
+                                            { $toString: '$_id' },
+                                            '$$companyIdStr'
+                                        ]
+                                    }
+                                }
+                            },
+                            { $project: { companyName: 1 } }
+                        ],
+                        as: 'companyInfo'
+                    }
+                },
+                {
+                    $addFields: {
+                        companyName: {
+                            $ifNull: [
+                                { $arrayElemAt: ['$companyInfo.companyName', 0] },
+                                '$companyName'
+                            ]
+                        }
+                    }
+                },
+                ...(jobTitleRegex ? [{
+                    $match: {
+                        $or: [
+                            { title: jobTitleRegex },
+                            { jobTitle: jobTitleRegex },
+                            { companyName: jobTitleRegex }
+                        ]
+                    }
+                }] : []),
 
                 // Add skill match score
                 {
@@ -335,65 +376,151 @@ class JobService {
     }
 
     /**
-     * Get job by ID
-     * @param {string} jobId - Job ID
-     * @returns {Object} Job details
+     * Suggest job titles and company names
+     * @param {string} query - Partial query
+     * @param {number} limit - Max suggestions
      */
-    async getJobById(jobId) {
-        const job = await Job.findById(jobId)
-            .populate('requiredSkills.skillId', 'name category')
-            .populate('optionalSkills.skillId', 'name category')
-            .lean();
+    async getJobSuggestions(query, limit = 8) {
+        const search = query.trim();
+        if (!search) return [];
 
-        if (!job) {
-            throw ApiError.notFound('Job not found');
-        }
+        const regex = new RegExp(search, 'i');
 
-        return job;
-    }
-
-    /**
-     * Increment job view count
-     * @param {string} jobId - Job ID
-     */
-    async incrementJobViews(jobId) {
-        await Job.findByIdAndUpdate(
-            jobId,
-            { $inc: { views: 1 } },
-            { new: true }
-        );
-    }
-
-    /**
-     * Search jobs with text query
-     * @param {string} query - Search query
-     * @param {Object} options - Pagination options
-     * @returns {Object} Search results with pagination
-     */
-    async searchJobs(query, options = {}) {
-        const page = Math.max(1, parseInt(options.page) || 1);
-        const limit = Math.min(50, Math.max(1, parseInt(options.limit) || 10));
-        const skip = (page - 1) * limit;
-
-        const searchQuery = {
-            $text: { $search: query },
-            isActive: true,
-            status: 'active'
-        };
-
-        const [jobs, total] = await Promise.all([
-            Job.find(searchQuery)
-                .select('title description companyName location salary jobType postedDate')
-                .sort({ score: { $meta: 'textScore' }, postedDate: -1 })
-                .skip(skip)
-                .limit(limit)
-                .lean(),
-            Job.countDocuments(searchQuery)
+        const results = await Job.aggregate([
+            {
+                $match: {
+                    $and: [
+                        { $or: [{ isActive: true }, { active: true }, { isActive: { $exists: false } }, { active: { $exists: false } }] },
+                        { $or: [{ status: 'active' }, { status: 'APPROVED' }, { status: { $exists: false } }] }
+                    ]
+                }
+            },
+            {
+                $lookup: {
+                    from: 'companies',
+                    let: { companyIdStr: '$companyId' },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: {
+                                    $eq: [
+                                        { $toString: '$_id' },
+                                        '$$companyIdStr'
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            $project: { companyName: 1 }
+                        }
+                    ],
+                    as: 'companyInfo'
+                }
+            },
+            {
+                $addFields: {
+                    companyName: {
+                        $ifNull: [
+                            { $arrayElemAt: ['$companyInfo.companyName', 0] },
+                            '$companyName'
+                        ]
+                    }
+                }
+            },
+            {
+                $match: {
+                    $or: [{ title: regex }, { jobTitle: regex }, { companyName: regex }]
+                }
+            },
+            {
+                $project: {
+                    title: 1,
+                    jobTitle: 1,
+                    companyName: 1
+                }
+            },
+            {
+                $facet: {
+                    titles: [
+                        { $match: { $or: [{ title: regex }, { jobTitle: regex }] } },
+                        { $group: { _id: { $ifNull: ['$jobTitle', '$title'] } } },
+                        { $limit: limit }
+                    ],
+                    companies: [
+                        { $match: { companyName: regex } },
+                        { $group: { _id: '$companyName' } },
+                        { $limit: limit }
+                    ]
+                }
+            }
         ]);
 
-        const pagination = this.calculatePagination(page, limit, total);
+        const titles = results[0]?.titles?.map(item => item._id) || [];
+        const companies = results[0]?.companies?.map(item => item._id) || [];
 
-        return { jobs, pagination };
+        return { titles, companies };
+    }
+
+    /**
+     * Suggest locations by state/country
+     * @param {string} query - Partial query
+     * @param {number} limit - Max suggestions
+     */
+    async getLocationSuggestions(query, limit = 8) {
+        const search = query.trim();
+        if (!search) return [];
+
+        const regex = new RegExp(search, 'i');
+
+        const results = await Job.aggregate([
+            {
+                $match: {
+                    $and: [
+                        { $or: [{ isActive: true }, { active: true }, { isActive: { $exists: false } }, { active: { $exists: false } }] },
+                        { $or: [{ status: 'active' }, { status: 'APPROVED' }, { status: { $exists: false } }] }
+                    ],
+                    $or: [
+                        { 'location.state': regex },
+                        { 'location.country': regex },
+                        { state: regex },
+                        { country: regex },
+                        { city: regex }
+                    ]
+                }
+            },
+            {
+                $project: {
+                    city: { $ifNull: ['$location.city', '$city'] },
+                    state: { $ifNull: ['$location.state', '$state'] },
+                    country: { $ifNull: ['$location.country', '$country'] }
+                }
+            },
+            {
+                $facet: {
+                    cities: [
+                        { $match: { city: regex } },
+                        { $group: { _id: '$city' } },
+                        { $limit: limit }
+                    ],
+                    states: [
+                        { $match: { state: regex } },
+                        { $group: { _id: '$state' } },
+                        { $limit: limit }
+                    ],
+                    countries: [
+                        { $match: { country: regex } },
+                        { $group: { _id: '$country' } },
+                        { $limit: limit }
+                    ]
+                }
+            }
+        ]);
+
+        const cities = results[0]?.cities?.map(item => item._id).filter(Boolean) || [];
+        const states = results[0]?.states?.map(item => item._id).filter(Boolean) || [];
+        const countries = results[0]?.countries?.map(item => item._id).filter(Boolean) || [];
+
+        return { cities, states, countries };
     }
 }
 
