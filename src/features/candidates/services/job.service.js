@@ -10,6 +10,20 @@ const HTTP_STATUS = require('../../../shared/constants/httpStatus');
 
 class JobService {
     /**
+     * Convert work experience years to experience level
+     * @param {number} years - Years of experience
+     * @returns {string} Experience level
+     */
+    getExperienceLevel(years) {
+        if (!years || years === 0) return 'Entry Level';
+        if (years <= 2) return 'Entry Level';
+        if (years <= 5) return 'Mid Level';
+        if (years <= 8) return 'Senior Level';
+        if (years <= 12) return 'Lead';
+        return 'Director';
+    }
+
+    /**
      * Calculate pagination metadata
      * @param {number} page - Current page number
      * @param {number} limit - Items per page
@@ -38,6 +52,7 @@ class JobService {
      * @returns {Object} Jobs with pagination metadata
      */
     async getRankingJobs(candidateId, options = {}) {
+        console.log(options)
         try {
             // Extract and validate pagination parameters
             const page = Math.max(1, parseInt(options.page) || 1);
@@ -74,18 +89,37 @@ class JobService {
                 ];
             }
 
+            if (options.postedWithin) {
+                console.log('postedWithin option:', options.postedWithin);
+                const daysAgo = new Date();
+                daysAgo.setDate(daysAgo.getDate() - parseInt(options.postedWithin));
+                console.log('Filtering postedOn >=', daysAgo);
+                baseQuery.postedOn = { $gte: daysAgo };
+            }
+
             if (options.jobType) {
                 baseQuery.jobType = options.jobType;
             }
 
             if (options.experienceLevel) {
-                baseQuery.experienceLevel = options.experienceLevel;
+                const levels = Array.isArray(options.experienceLevel) ? options.experienceLevel : [options.experienceLevel];
+                const conditions = levels.map(level => {
+                    if (level.toLowerCase().includes('entry')) return { workExperience: { $lte: 2 } };
+                    if (level.toLowerCase().includes('mid')) return { workExperience: { $gt: 2, $lte: 5 } };
+                    if (level.toLowerCase().includes('senior')) return { workExperience: { $gt: 5, $lte: 8 } };
+                    if (level.toLowerCase().includes('lead')) return { workExperience: { $gt: 8, $lte: 12 } };
+                    if (level.toLowerCase().includes('director') || level.toLowerCase().includes('executive')) return { workExperience: { $gt: 12 } };
+                    return { workExperience: { $gte: 0 } };
+                });
+                baseQuery.$or = conditions;
             }
 
             if (options.isRemote !== undefined) {
                 // Old schema doesn't have remote field, skip for now
                 // baseQuery.travelRequired = options.isRemote === 'true';
             }
+
+            console.log('Final baseQuery before aggregation:', JSON.stringify(baseQuery, null, 2));
 
             // Salary filter - old schema doesn't have salary, skip for now
             // if (options.minSalary || options.maxSalary) {
@@ -101,6 +135,22 @@ class JobService {
             // Build aggregation pipeline for skill matching and scoring
             const pipeline = [
                 { $match: baseQuery },
+                {
+                    $addFields: {
+                        experience: {
+                            $switch: {
+                                branches: [
+                                    { case: { $lte: ['$workExperience', 2] }, then: 'Entry Level' },
+                                    { case: { $lte: ['$workExperience', 5] }, then: 'Mid Level' },
+                                    { case: { $lte: ['$workExperience', 8] }, then: 'Senior Level' },
+                                    { case: { $lte: ['$workExperience', 12] }, then: 'Lead' }
+                                ],
+                                default: 'Director'
+                            }
+                        }
+                    }
+                },
+                ...(options.experienceLevel ? [{}] : []),
                 {
                     $lookup: {
                         from: 'companies',
@@ -329,6 +379,17 @@ class JobService {
                                     companyId: 1,
                                     jobType: 1,
                                     workExperience: 1,
+                                    experience: {
+                                        $switch: {
+                                            branches: [
+                                                { case: { $lte: ['$workExperience', 2] }, then: 'Entry Level' },
+                                                { case: { $lte: ['$workExperience', 5] }, then: 'Mid Level' },
+                                                { case: { $lte: ['$workExperience', 8] }, then: 'Senior Level' },
+                                                { case: { $lte: ['$workExperience', 12] }, then: 'Lead' }
+                                            ],
+                                            default: 'Director'
+                                        }
+                                    },
                                     city: 1,
                                     state: 1,
                                     country: 1,
@@ -371,6 +432,7 @@ class JobService {
 
         } catch (error) {
             console.error('Error in getRankingJobs:', error);
+            console.error('Error stack:', error.stack);
             throw error;
         }
     }

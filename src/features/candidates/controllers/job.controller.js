@@ -27,7 +27,8 @@ exports.getRankingJobs = asyncHandler(async (req, res) => {
         experienceLevel: req.query.experienceLevel,
         minSalary: req.query.minSalary,
         maxSalary: req.query.maxSalary,
-        isRemote: req.query.isRemote
+        isRemote: req.query.isRemote,
+        postedWithin: req.query.postedWithin
     };
 
     // Get ranked jobs
