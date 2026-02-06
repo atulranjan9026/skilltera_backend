@@ -83,7 +83,7 @@ const API_VERSION = process.env.API_VERSION || 'v1';
 app.use(`/api/${API_VERSION}/candidates/auth`, candidateAuthRoutes);
 app.use(`/api/${API_VERSION}/candidates/profile`, candidateProfileRoutes);
 app.use(`/api/${API_VERSION}/candidate/job`, candidateJobRoutes);
-app.use(`/api/${API_VERSION}/candidate/skillList`, candidateSkillRoutes);
+app.use(`/api/${API_VERSION}/candidate/skills`, candidateSkillRoutes);
 
 
 

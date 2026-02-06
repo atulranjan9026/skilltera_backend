@@ -70,7 +70,7 @@ class AuthService {
         console.log('🔍 Searching for candidate in database...');
         const candidate = await Candidate.findOne({ email })
             .select('+password')
-            .populate('skills.skillId', 'name');
+            .populate('skills.skillId', 'skill name');
         console.log("candidate Skills : ", candidate.skills);
         console.log('🔍 Candidate found:', !!candidate);
 
@@ -124,7 +124,7 @@ class AuthService {
                     id: skill._id || skill.id,
                     experience: skill.experience,
                     rating: skill.rating,
-                    skillName: skill.skillId?.name || skill.skillId?.skillName || null,
+                    skillName: skill.skillId?.skill || skill.skillId?.name || skill.skillId?.skillName || null,
                     isVerified: skill.isVerified
                 }));
         }

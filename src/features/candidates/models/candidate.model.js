@@ -84,9 +84,8 @@ const candidateSchema = new mongoose.Schema(
                 type: mongoose.Schema.Types.ObjectId,
                 ref: 'Skill',
             },
-            experience: { type: Number, default: 0 },
-            rating: { type: Number, default: 0 },
-            category: String,
+            experience: { type: Number, min: 0, max: 50, default: 0 },
+            rating: { type: Number, min: 1, max: 5, default: 0 },
             isVerified: { type: Boolean, default: false },
         }],
 

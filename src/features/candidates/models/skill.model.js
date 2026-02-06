@@ -19,7 +19,7 @@ const skillSchema = new mongoose.Schema(
 );
 
 // Index for faster search
-skillSchema.index({ skill: 1 });
+// skillSchema.index({ skill: 1 }); // Already indexed by unique: true
 skillSchema.index({ skill: "text", active: 1 });
 
 const Skill = mongoose.model('Skill', skillSchema);

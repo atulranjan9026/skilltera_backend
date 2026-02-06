@@ -2,12 +2,17 @@ const express = require('express');
 const router = express.Router();
 
 const skillController = require('../controllers/skill.controller');
-// const masterSkillController = require('../controllers/masterSkill.controller');
+const { authenticate } = require('../../../shared/middleware/auth.middleware');
 
-// All Active Skills
+// Public routes
+// Get all active skills (for search/autocomplete)
 router.get('/allActiveSkills', skillController.getAllActiveSkills);
 
-// Seed master skills (for development)
-// router.post('/seed', masterSkillController.seedMasterSkills);
+// Protected routes (require authentication)
+// Add skill to candidate profile
+router.post('/add', authenticate, skillController.addSkillToCandidate);
+
+// Delete skill from candidate profile
+router.delete('/:skillEntryId', authenticate, skillController.deleteSkillFromCandidate);
 
 module.exports = router;
