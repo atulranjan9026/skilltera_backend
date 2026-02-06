@@ -370,7 +370,7 @@ class JobService {
                                     as: 'skillDetails'
                                 }
                             },
-                                {
+                            {
                                 $project: {
                                     _id: 1,
                                     jobId: 1,
@@ -403,7 +403,7 @@ class JobService {
                                     skillDetails: 1,
                                     openings: 1,
                                     applicationsCount: 1,
-                                    companyName: { 
+                                    companyName: {
                                         $ifNull: [
                                             { $arrayElemAt: ['$companyInfo.companyName', 0] },
                                             { $ifNull: ['$companyName', 'Unknown Company'] }

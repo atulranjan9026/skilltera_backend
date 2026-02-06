@@ -1,25 +1,24 @@
-const MasterSkill = require('../models/masterSkill.model');
-
+const Skill = require('../models/skill.model');
 
 class SkillService {
     /**
-     * Get all active skills with optional search
+     * Get all active master skills with optional search
      * @param {string} searchTerm - Optional search term
-     * @returns {Promise<Array>} Skills
+     * @returns {Promise<Array>} Master skills
      */
+
     async getAllActiveSkills(searchTerm) {
         let skills;
-
         if (searchTerm) {
-            // Search by skill name with case-insensitive regex
-            skills = await MasterSkill.find({
-                name: { $regex: searchTerm, $options: "i" },
+            // Use text search for better performance with partial matching
+            skills = await Skill.find({
+                skill: { $regex: searchTerm, $options: "i" },
                 active: true,
-            }).lean();
+            }).lean().limit(10); // Limit results for performance
         } else {
             // Get all active skills
-            skills = await MasterSkill.find({ active: true })
-                .sort({ name: 1 })
+            skills = await Skill.find({ active: true })
+                .sort({ skill: 1 })
                 .lean();
         }
 

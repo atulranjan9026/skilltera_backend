@@ -16,7 +16,10 @@ const candidateAuthRoutes = require('./features/candidates/routes/auth.routes');
 const candidateProfileRoutes = require('./features/candidates/routes/profile.routes');
 const candidateJobRoutes = require('./features/candidates/routes/job.routes');
 const candidateSkillRoutes = require('./features/candidates/routes/skill.routes');
-const candidateCompanyRoutes = require('./features/candidates/routes/company.routes');
+
+
+// Company Routes
+// const candidateCompanyRoutes = require('./features/Company/routes/company.routes');
 
 /**
  * Express Application Setup
@@ -80,12 +83,12 @@ const API_VERSION = process.env.API_VERSION || 'v1';
 app.use(`/api/${API_VERSION}/candidates/auth`, candidateAuthRoutes);
 app.use(`/api/${API_VERSION}/candidates/profile`, candidateProfileRoutes);
 app.use(`/api/${API_VERSION}/candidate/job`, candidateJobRoutes);
-app.use(`/api/${API_VERSION}/candidate/companies`, candidateCompanyRoutes);
+app.use(`/api/${API_VERSION}/candidate/skillList`, candidateSkillRoutes);
 
 
 
-// All Active Skills
-app.use(`/api/${API_VERSION}/allActiveSkills`, candidateSkillRoutes);
+// Company Routes
+// app.use(`/api/${API_VERSION}/companies`, candidateCompanyRoutes);
 
 
 // API Health Check (versioned)

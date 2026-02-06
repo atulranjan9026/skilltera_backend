@@ -71,7 +71,7 @@ class AuthService {
         const candidate = await Candidate.findOne({ email })
             .select('+password')
             .populate('skills.skillId', 'name');
-
+        console.log("candidate Skills : ", candidate.skills);
         console.log('🔍 Candidate found:', !!candidate);
 
         if (!candidate) {
@@ -116,6 +116,18 @@ class AuthService {
         delete candidateObject.password;
         delete candidateObject.refreshTokens;
         delete candidateObject.emailVerificationToken;
+
+        // Transform skills array to only include essential fields
+        if (candidateObject.skills && Array.isArray(candidateObject.skills)) {
+            candidateObject.skills = candidateObject.skills
+                .map(skill => ({
+                    id: skill._id || skill.id,
+                    experience: skill.experience,
+                    rating: skill.rating,
+                    skillName: skill.skillId?.name || skill.skillId?.skillName || null,
+                    isVerified: skill.isVerified
+                }));
+        }
 
         return {
             candidate: candidateObject,

@@ -19,7 +19,7 @@ class ProfileService {
      */
     async getProfile(candidateId) {
         const candidate = await Candidate.findById(candidateId)
-            .populate('skills')
+            .populate('skills.skillId', 'name skillName')
             .populate('experiences')
             .populate('education')
             .populate('certificates')
@@ -29,7 +29,22 @@ class ProfileService {
             throw ApiError.notFound(ERROR_MESSAGES.USER_NOT_FOUND);
         }
 
-        return candidate;
+        // Transform to plain object
+        const candidateObject = candidate.toObject();
+
+        // Transform skills array to only include essential fields
+        if (candidateObject.skills && Array.isArray(candidateObject.skills)) {
+            candidateObject.skills = candidateObject.skills
+                .map(skill => ({
+                    id: skill._id || skill.id,
+                    experience: skill.experience,
+                    rating: skill.rating,
+                    skillName: skill.skillId?.name || skill.skillId?.skillName || null,
+                    isVerified: skill.isVerified
+                }));
+        }
+
+        return candidateObject;
     }
 
     /**
