@@ -1,9 +1,7 @@
+const SkillService = require('../services/skill.service');
 const asyncHandler = require('../../../shared/utils/asyncHandler');
 const ApiResponse = require('../../../shared/utils/ApiResponse');
 const HTTP_STATUS = require('../../../shared/constants/httpStatus');
-const SkillService = require('../services/skill.service');
-const ProfileService = require('../services/profile.service');
-
 
 exports.getAllActiveSkills = asyncHandler(async (req, res) => {
     try {
@@ -22,7 +20,7 @@ exports.addSkillToCandidate = asyncHandler(async (req, res) => {
         const { skillId, experience, rating } = req.body;
         const candidateId = req.user.id;
 
-        const updatedCandidate = await ProfileService.addSkill(candidateId, skillId, experience, rating);
+        const updatedCandidate = await SkillService.addSkill(candidateId, skillId, experience, rating);
 
         const response = new ApiResponse(
             HTTP_STATUS.OK,
@@ -45,7 +43,7 @@ exports.deleteSkillFromCandidate = asyncHandler(async (req, res) => {
         const { skillEntryId } = req.params; // The _id of the skill in the skills array
         const candidateId = req.user.id;
 
-        const updatedCandidate = await ProfileService.deleteSkill(candidateId, skillEntryId);
+        const updatedCandidate = await SkillService.deleteSkill(candidateId, skillEntryId);
 
         const response = new ApiResponse(
             HTTP_STATUS.OK,
