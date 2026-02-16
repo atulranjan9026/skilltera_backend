@@ -37,8 +37,9 @@ const errorHandler = (err, req, res, next) => {
         error = new ApiError(HTTP_STATUS.UNPROCESSABLE_ENTITY, 'Validation failed');
         error.errors = errors;
     } else if (err.name === 'CastError') {
-        // Mongoose cast error (invalid ObjectId)
-        error = ApiError.badRequest(`Invalid ${err.path}: ${err.value}`);
+        // Mongoose cast error (wrong type for path)
+        error = new ApiError(HTTP_STATUS.UNPROCESSABLE_ENTITY, 'Validation failed');
+        error.errors = [{ field: err.path, message: err.message }];
     } else if (err.code === 11000) {
         // MongoDB duplicate key error
         const field = Object.keys(err.keyPattern)[0];

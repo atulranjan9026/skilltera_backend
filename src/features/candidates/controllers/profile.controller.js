@@ -5,6 +5,7 @@ const educationService = require('../services/education.service');
 const certificateService = require('../services/certificate.service');
 const resumeService = require('../services/resume.service');
 const asyncHandler = require('../../../shared/utils/asyncHandler');
+const ApiError = require('../../../shared/utils/ApiError');
 const ApiResponse = require('../../../shared/utils/ApiResponse');
 const HTTP_STATUS = require('../../../shared/constants/httpStatus');
 const { SUCCESS_MESSAGES } = require('../../../shared/constants');

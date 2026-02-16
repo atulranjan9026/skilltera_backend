@@ -106,10 +106,20 @@ const verifyEmailSchema = Joi.object({
         }),
 });
 
+// Google auth validation
+const googleAuthSchema = Joi.object({
+    credential: Joi.string()
+        .required()
+        .messages({
+            'string.empty': 'Google credential is required',
+        }),
+});
+
 module.exports = {
     signupSchema,
     loginSchema,
     emailSchema,
     passwordResetSchema,
     verifyEmailSchema,
+    googleAuthSchema,
 };

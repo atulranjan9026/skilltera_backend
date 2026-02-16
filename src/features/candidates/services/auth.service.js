@@ -1,9 +1,18 @@
+const { OAuth2Client } = require('google-auth-library');
 const Candidate = require('../models/candidate.model');
 const TokenManager = require('../../../shared/utils/tokenManager');
 const emailService = require('../../../shared/utils/emailService');
 const ApiError = require('../../../shared/utils/ApiError');
 const { ERROR_MESSAGES, SUCCESS_MESSAGES } = require('../../../shared/constants');
 const logger = require('../../../shared/utils/logger');
+
+const getGoogleClient = () => {
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    if (!clientId) {
+        throw ApiError.internal('Google OAuth is not configured');
+    }
+    return new OAuth2Client(clientId);
+};
 
 /**
  * Authentication Service
@@ -127,6 +136,118 @@ class AuthService {
                     skillName: skill.skillId?.skill || skill.skillId?.name || skill.skillId?.skillName || null,
                     isVerified: skill.isVerified
                 }));
+        }
+
+        return {
+            candidate: candidateObject,
+            accessToken,
+            refreshToken,
+        };
+    }
+
+    /**
+     * Authenticate with Google credential (ID token)
+     * @param {string} credential - Google ID token from frontend
+     * @returns {Promise<object>} Candidate and tokens
+     */
+    async authenticateWithGoogle(credential) {
+        if (!credential) {
+            throw ApiError.badRequest('Google credential is required');
+        }
+
+        let payload;
+        try {
+            const client = getGoogleClient();
+            const ticket = await client.verifyIdToken({
+                idToken: credential,
+                audience: process.env.GOOGLE_CLIENT_ID,
+            });
+            payload = ticket.getPayload();
+        } catch (error) {
+            logger.error('Google token verification failed:', error);
+            throw ApiError.unauthorized('Invalid Google credential');
+        }
+
+        const { sub: googleId, email, name, given_name, family_name, picture } = payload;
+        if (!email) {
+            throw ApiError.badRequest('Email not provided by Google');
+        }
+
+        let displayName = name || [given_name, family_name].filter(Boolean).join(' ') || email?.split('@')[0] || 'User';
+        if (displayName.trim().length < 2) displayName = 'User'; // Model requires min 2 chars
+
+        // Find by googleId first, then by email (for account linking)
+        let candidate = await Candidate.findOne({ googleId })
+            .populate('skills.skillId', 'skill name');
+
+        if (!candidate) {
+            candidate = await Candidate.findOne({ email })
+                .populate('skills.skillId', 'skill name');
+        }
+
+        if (!candidate) {
+            // Create new candidate
+            candidate = await Candidate.create({
+                googleId,
+                email,
+                name: displayName,
+                authProvider: 'google',
+                emailVerified: true,
+                experience: 0,
+                avatar: picture ? { url: picture } : undefined,
+            });
+        } else {
+            // Link googleId to existing account if not already linked
+            if (!candidate.googleId) {
+                candidate.googleId = googleId;
+                candidate.authProvider = 'google';
+                candidate.emailVerified = true;
+                if (picture && !candidate.avatar?.url) {
+                    candidate.avatar = { url: picture };
+                }
+                // Ensure name is set (existing account may have empty name)
+                if (!candidate.name || candidate.name.trim().length < 2) {
+                    candidate.name = displayName;
+                    candidate.markModified('name');
+                }
+                // Ensure experience is a valid number (handles corrupt DB data)
+                if (typeof candidate.experience !== 'number' || isNaN(candidate.experience)) {
+                    candidate.experience = 0;
+                    candidate.markModified('experience');
+                }
+                await candidate.save();
+            }
+        }
+
+        // Generate tokens
+        const { accessToken, refreshToken } = TokenManager.generateTokenPair(candidate);
+
+        await Candidate.updateOne(
+            { _id: candidate._id },
+            {
+                $push: {
+                    refreshTokens: {
+                        $each: [refreshToken],
+                        $slice: -5,
+                    },
+                },
+                $set: { lastLogin: new Date() },
+            }
+        );
+
+        const candidateObject = candidate.toObject();
+        delete candidateObject.password;
+        delete candidateObject.refreshTokens;
+        delete candidateObject.emailVerificationToken;
+
+        if (candidateObject.skills && Array.isArray(candidateObject.skills)) {
+            candidateObject.skills = candidateObject.skills.map((skill) => ({
+                id: skill._id || skill.id,
+                experience: skill.experience,
+                rating: skill.rating,
+                skillName: skill.skillId?.skill || skill.skillId?.name || skill.skillId?.skillName || null,
+                isVerified: skill.isVerified,
+            }));
         }
 
         return {

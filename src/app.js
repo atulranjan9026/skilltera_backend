@@ -1,4 +1,5 @@
 const express = require('express');
+const path = require('path');
 const helmet = require('helmet');
 const mongoSanitize = require('express-mongo-sanitize');
 const xss = require('xss-clean');
@@ -41,6 +42,9 @@ const corsOptions = {
     optionsSuccessStatus: 200,
 };
 app.use(cors(corsOptions));
+
+// Serve uploaded files (local storage fallback when Cloudinary not configured)
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 // Body Parser Middleware
 app.use(express.json({ limit: '10mb' }));
