@@ -2,17 +2,19 @@ const cloudinary = require('cloudinary').v2;
 const logger = require('../shared/utils/logger');
 
 /**
- * Configure Cloudinary
+ * Configure Cloudinary (only when valid credentials are present)
  */
 const configureCloudinary = () => {
+    const name = process.env.CLOUDINARY_CLOUD_NAME;
+    if (!name || name === 'your-cloud-name') {
+        return; // Skip - will use local storage fallback
+    }
     try {
         cloudinary.config({
-            cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+            cloud_name: name,
             api_key: process.env.CLOUDINARY_API_KEY,
             api_secret: process.env.CLOUDINARY_API_SECRET,
         });
-
-        // logger.info('Cloudinary configured successfully');
     } catch (error) {
         logger.error('Failed to configure Cloudinary:', error);
     }

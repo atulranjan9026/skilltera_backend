@@ -14,9 +14,10 @@ const startServer = async () => {
         await connectDB();
         logger.info('✓ Database connected successfully');
 
-        // Configure Cloudinary
+        // Configure Cloudinary (skipped if not configured - resume uses local storage)
         configureCloudinary();
-        logger.info('✓ Cloudinary configured successfully');
+        const { isCloudinaryConfigured } = require('./config/storage');
+        logger.info(isCloudinaryConfigured() ? '✓ Cloudinary configured' : '✓ Using local file storage for uploads');
 
         // Start Express Server
         const server = app.listen(PORT, () => {

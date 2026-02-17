@@ -21,7 +21,9 @@ const candidateSchema = new mongoose.Schema(
         },
         password: {
             type: String,
-            required: [true, 'Password is required'],
+            required: function () {
+                return !this.googleId; // Optional for Google OAuth users
+            },
             minlength: [8, 'Password must be at least 8 characters long'],
             select: false, // Don't include password in queries by default
         },
@@ -124,6 +126,18 @@ const candidateSchema = new mongoose.Schema(
             },
         ],
 
+        // OAuth
+        googleId: {
+            type: String,
+            unique: true,
+            sparse: true, // Allows null for non-Google users
+        },
+        authProvider: {
+            type: String,
+            enum: ['local', 'google'],
+            default: 'local',
+        },
+
         // Authentication & Security
         role: {
             type: String,
@@ -176,8 +190,8 @@ candidateSchema.virtual('fullLocation').get(function () {
 
 // Pre-save middleware to hash password
 candidateSchema.pre('save', async function (next) {
-    // Only hash password if it's modified
-    if (!this.isModified('password')) return next();
+    // Skip for Google OAuth users or when password not modified
+    if (!this.isModified('password') || !this.password) return next();
 
     try {
         const salt = await bcrypt.genSalt(parseInt(process.env.BCRYPT_ROUNDS) || 12);
@@ -217,6 +231,7 @@ candidateSchema.pre('save', function (next) {
 
 // Instance method to compare password
 candidateSchema.methods.comparePassword = async function (candidatePassword) {
+    if (!this.password) return false; // Google OAuth users have no password
     return await bcrypt.compare(candidatePassword, this.password);
 };
 

@@ -12,6 +12,7 @@ const {
     emailSchema,
     passwordResetSchema,
     verifyEmailSchema,
+    googleAuthSchema,
 } = require('../validators/auth.validator');
 
 /**
@@ -32,6 +33,13 @@ router.post(
     authLimiter,
     validateJoi(loginSchema, 'body'),
     authController.login
+);
+
+router.post(
+    '/google',
+    authLimiter,
+    validateJoi(googleAuthSchema, 'body'),
+    authController.googleAuth
 );
 
 router.post(

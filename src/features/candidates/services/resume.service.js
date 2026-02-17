@@ -1,7 +1,7 @@
 const Candidate = require('../models/candidate.model');
 const ApiError = require('../../../shared/utils/ApiError');
 const { ERROR_MESSAGES } = require('../../../shared/constants');
-const { uploadToCloudinary, deleteFromCloudinary } = require('../../../config/cloudinary');
+const { uploadFile, deleteFile } = require('../../../config/storage');
 
 /**
  * Resume Service
@@ -24,11 +24,11 @@ class ResumeService {
 
         // Delete old resume if exists
         if (candidate.resume?.publicId) {
-            await deleteFromCloudinary(candidate.resume.publicId, 'raw');
+            await deleteFile(candidate.resume.publicId, 'raw');
         }
 
-        // Upload new resume
-        const result = await uploadToCloudinary(fileBuffer, 'skilltera/resumes', 'raw');
+        // Upload new resume (Cloudinary if configured, else local storage)
+        const result = await uploadFile(fileBuffer, 'skilltera/resumes', 'raw', filename);
 
         candidate.resume = {
             url: result.secure_url,
@@ -55,7 +55,7 @@ class ResumeService {
         }
 
         if (candidate.resume?.publicId) {
-            await deleteFromCloudinary(candidate.resume.publicId, 'raw');
+            await deleteFile(candidate.resume.publicId, 'raw');
         }
 
         candidate.resume = undefined;

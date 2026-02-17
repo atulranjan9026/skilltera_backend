@@ -60,28 +60,15 @@ exports.login = asyncHandler(async (req, res) => {
  * @access  Private
  */
 exports.logout = asyncHandler(async (req, res) => {
-    console.log('🔍 Logout request received');
-    console.log('🔍 Request body:', req.body);
-    console.log('🔍 Cookies:', req.cookies);
-    console.log('🔍 User ID:', req.userId);
-    
     const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
-    console.log('🔍 Refresh token found:', !!refreshToken);
 
-    // If refresh token is provided, invalidate it
     if (refreshToken) {
-        console.log('🔍 Invalidating specific refresh token...');
         await authService.logout(refreshToken, req.userId);
     } else {
-        console.log('🔍 No refresh token found, clearing all tokens...');
-        // If no refresh token, just clear all tokens for this user
         await authService.logoutAll(req.userId);
     }
 
-    // Clear refresh token cookie if it exists
     res.clearCookie('refreshToken');
-
-    console.log('🔍 Logout completed successfully');
     const response = new ApiResponse(HTTP_STATUS.OK, null, 'Logout successful');
     response.send(res);
 });
@@ -177,6 +164,34 @@ exports.resetPassword = asyncHandler(async (req, res) => {
     const result = await authService.resetPassword(token, password);
 
     const response = new ApiResponse(HTTP_STATUS.OK, null, result.message);
+    response.send(res);
+});
+
+/**
+ * @route   POST /api/v1/candidates/auth/google
+ * @desc    Authenticate with Google credential
+ * @access  Public
+ */
+exports.googleAuth = asyncHandler(async (req, res) => {
+    const { credential } = req.body;
+    const result = await authService.authenticateWithGoogle(credential);
+
+    res.cookie('refreshToken', result.refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+
+    const response = new ApiResponse(
+        HTTP_STATUS.OK,
+        {
+            candidate: result.candidate,
+            accessToken: result.accessToken,
+        },
+        'Login successful'
+    );
+
     response.send(res);
 });
 
