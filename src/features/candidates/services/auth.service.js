@@ -71,17 +71,17 @@ class AuthService {
         const candidate = await Candidate.findOne({ email })
             .select('+password')
             .populate('skills.skillId', 'skill name');
-        console.log("candidate Skills : ", candidate.skills);
-        console.log('🔍 Candidate found:', !!candidate);
+        // console.log("candidate Skills : ", candidate.skills);
+        // console.log('🔍 Candidate found:', !!candidate);
 
         if (!candidate) {
             throw ApiError.unauthorized(ERROR_MESSAGES.INVALID_CREDENTIALS);
         }
 
-        console.log('🔍 Comparing password...');
+        // console.log('🔍 Comparing password...');
         // Check password
         const isPasswordValid = await candidate.comparePassword(password);
-        console.log('🔍 Password valid:', isPasswordValid);
+        // console.log('🔍 Password valid:', isPasswordValid);
 
         if (!isPasswordValid) {
             throw ApiError.unauthorized(ERROR_MESSAGES.INVALID_CREDENTIALS);
@@ -117,16 +117,30 @@ class AuthService {
         delete candidateObject.refreshTokens;
         delete candidateObject.emailVerificationToken;
 
-        // Transform skills array to only include essential fields
+        // Transform skills array - Handle both populated and unpopulated cases
         if (candidateObject.skills && Array.isArray(candidateObject.skills)) {
-            candidateObject.skills = candidateObject.skills
-                .map(skill => ({
-                    id: skill._id || skill.id,
-                    experience: skill.experience,
-                    rating: skill.rating,
-                    skillName: skill.skillId?.skill || skill.skillId?.name || skill.skillId?.skillName || null,
-                    isVerified: skill.isVerified
-                }));
+            candidateObject.skills = candidateObject.skills.map(skill => {
+                // console.log('skill,,,,', skill);
+                // Handle populated skillId (object)
+                if (skill.skillId && typeof skill.skillId === 'object') {
+                    return {
+                        skillId: skill.skillId._id,  // Keep the ID for updates/deletes
+                        skillName: skill.skillId.skill, // The actual skill name
+                        experience: skill.experience || 0,
+                        rating: skill.rating || 0,
+                        isVerified: skill.isVerified || false
+                    };
+                }
+
+                // Handle unpopulated skillId (just ObjectId)
+                return {
+                    skillId: skill.skillId,
+                    skillName: null, // Will need to populate separately
+                    experience: skill.experience || 0,
+                    rating: skill.rating || 0,
+                    isVerified: skill.isVerified || false
+                };
+            });
         }
 
         return {

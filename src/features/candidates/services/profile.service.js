@@ -19,7 +19,7 @@ class ProfileService {
      */
     async getProfile(candidateId) {
         const candidate = await Candidate.findById(candidateId)
-            .populate('skills.skillId', 'name skillName')
+            .populate('skills.skillId', 'skill name')
             .populate('experiences')
             .populate('education')
             .populate('certificates')
@@ -32,16 +32,31 @@ class ProfileService {
         // Transform to plain object
         const candidateObject = candidate.toObject();
 
-        // Transform skills array to only include essential fields
+        // Transform skills array - Handle both populated and unpopulated cases
         if (candidateObject.skills && Array.isArray(candidateObject.skills)) {
-            candidateObject.skills = candidateObject.skills
-                .map(skill => ({
-                    id: skill._id || skill.id,
-                    experience: skill.experience,
-                    rating: skill.rating,
-                    skillName: skill.skillId?.name || skill.skillId?.skillName || null,
-                    isVerified: skill.isVerified
-                }));
+            // console.log('Profile Skills', candidateObject.skills);
+            candidateObject.skills = candidateObject.skills.map(skill => {
+                // Handle populated skillId (object)
+                if (skill.skillId && typeof skill.skillId === 'object') {
+                    return {
+                        skillId: skill.skillId._id,  // Keep the ID for updates/deletes
+                        skillName: skill.skillId.skill || 'Unknown Skill Profile', // The actual skill name
+                        id: skill._id,
+                        experience: skill.experience || 0,
+                        rating: skill.rating || 0,
+                        isVerified: skill.isVerified || false
+                    };
+                }
+
+                // Handle unpopulated skillId (just ObjectId)
+                return {
+                    skillId: skill.skillId,
+                    skillName: null, // Will need to populate separately
+                    experience: skill.experience || 0,
+                    rating: skill.rating || 0,
+                    isVerified: skill.isVerified || false
+                };
+            });
         }
 
         return candidateObject;

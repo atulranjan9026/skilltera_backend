@@ -19,11 +19,17 @@ const updateProfileSchema = Joi.object({
         country: Joi.string().optional(),
     }).optional(),
 
-    expectedSalary: Joi.object({
-        min: Joi.number().min(0).optional(),
-        max: Joi.number().min(0).optional(),
-        currency: Joi.string().optional(),
-    }).optional(),
+    expectedSalary: Joi.alternatives()
+        .try(
+            Joi.object({
+                min: Joi.number().min(0).optional(),
+                max: Joi.number().min(0).optional(),
+                currency: Joi.string().optional(),
+            }),
+            Joi.number().min(0),
+            Joi.string().allow('')
+        )
+        .optional(),
 
     dateOfBirth: Joi.date().max('now').optional(),
     gender: Joi.string().valid('male', 'female', 'other', 'prefer_not_to_say').optional(),
@@ -31,38 +37,33 @@ const updateProfileSchema = Joi.object({
 
 // Add skill validation
 const addSkillSchema = Joi.object({
-    name: Joi.string()
+    skillId: Joi.string()
         .required()
         .messages({
-            'string.empty': 'Skill name is required',
+            'string.empty': 'Skill is required',
         }),
 
     rating: Joi.number()
         .min(1)
-        .max(10)
+        .max(5)
         .default(5)
         .messages({
             'number.min': 'Rating must be at least 1',
-            'number.max': 'Rating cannot exceed 10',
+            'number.max': 'Rating cannot exceed 5',
         }),
 
-    experienceYears: Joi.number()
+    experience: Joi.number()
         .min(0)
         .default(0)
         .messages({
             'number.min': 'Experience years cannot be negative',
         }),
-
-    category: Joi.string()
-        .valid('technical', 'soft', 'language', 'tool', 'framework', 'other')
-        .default('technical'),
 });
 
 // Update skill validation
 const updateSkillSchema = Joi.object({
-    rating: Joi.number().min(1).max(10).optional(),
-    experienceYears: Joi.number().min(0).optional(),
-    category: Joi.string().valid('technical', 'soft', 'language', 'tool', 'framework', 'other').optional(),
+    rating: Joi.number().min(1).max(5).optional(),
+    experience: Joi.number().min(0).optional(),
 });
 
 // Add experience validation

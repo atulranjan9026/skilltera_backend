@@ -31,6 +31,7 @@ router.patch('/', validateJoi(updateProfileSchema, 'body'), profileController.up
 router.post('/avatar', uploadSingle('avatar'), profileController.uploadAvatar);
 
 // Skills
+router.get('/allActiveSkills', profileController.getAllActiveSkills);
 router.post('/skills', validateJoi(addSkillSchema, 'body'), profileController.addSkill);
 router.put('/skills/:id', validateJoi(updateSkillSchema, 'body'), profileController.updateSkill);
 router.delete('/skills/:id', profileController.deleteSkill);

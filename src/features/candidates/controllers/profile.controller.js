@@ -69,7 +69,11 @@ exports.uploadAvatar = asyncHandler(async (req, res) => {
     response.send(res);
 });
 
-
+exports.getAllActiveSkills = asyncHandler(async (req, res) => {
+    const skills = await skillService.getAllActiveSkills(req.query.search);
+    const response = new ApiResponse(HTTP_STATUS.OK, skills, 'Active skills fetched successfully');
+    response.send(res);
+});
 
 exports.addSkill = asyncHandler(async (req, res) => {
     const { skillId, experience, rating } = req.body;
@@ -123,6 +127,12 @@ exports.updateEducation = asyncHandler(async (req, res) => {
 });
 
 exports.deleteEducation = asyncHandler(async (req, res) => {
+    console.log('Delete education request:', {
+        userId: req.userId,
+        educationId: req.params.id,
+        headers: req.headers
+    });
+
     await educationService.deleteEducation(req.userId, req.params.id);
     const response = new ApiResponse(HTTP_STATUS.OK, null, SUCCESS_MESSAGES.EDUCATION_DELETED);
     response.send(res);
