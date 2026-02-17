@@ -207,7 +207,7 @@ class AuthService {
                 name: displayName,
                 authProvider: 'google',
                 emailVerified: true,
-                experience: 0,
+                overallExperience: 0,
                 avatar: picture ? { url: picture } : undefined,
             });
         } else {
@@ -224,10 +224,10 @@ class AuthService {
                     candidate.name = displayName;
                     candidate.markModified('name');
                 }
-                // Ensure experience is a valid number (handles corrupt DB data)
-                if (typeof candidate.experience !== 'number' || isNaN(candidate.experience)) {
-                    candidate.experience = 0;
-                    candidate.markModified('experience');
+                // Ensure overallExperience is a valid number (handles corrupt DB data)
+                if (typeof candidate.overallExperience !== 'number' || isNaN(candidate.overallExperience)) {
+                    candidate.overallExperience = 0;
+                    candidate.markModified('overallExperience');
                 }
                 await candidate.save();
             }

@@ -32,21 +32,29 @@ const candidateSchema = new mongoose.Schema(
             trim: true,
             match: [/^[0-9]{10,15}$/, 'Please provide a valid phone number'],
         },
+        currentCity: String,
+        country: String,
+        currentCompany: String,
+        
 
         // Profile Information
         bio: {
             type: String,
             maxlength: [500, 'Bio cannot exceed 500 characters'],
         },
+        experienceSummary: {
+            type: String,
+            maxlength: [1000, 'Experience summary cannot exceed 1000 characters'],
+        },
+        linkedInUrl: {
+            type: String,
+            match: [/^https?:\/\/(www\.)?linkedin\.com\/.+/, 'Please provide a valid LinkedIn URL'],
+        },
         avatar: {
             url: String,
             publicId: String,
         },
-        location: {
-            city: String,
-            state: String,
-            country: String,
-        },
+        
         dateOfBirth: Date,
         gender: {
             type: String,
@@ -55,7 +63,7 @@ const candidateSchema = new mongoose.Schema(
 
         // Professional Information
         currentRole: String,
-        experience: {
+        overallExperience: { // Renamed from 'experience' to match frontend
             type: Number, // Total years of experience
             default: 0,
         },
@@ -177,14 +185,13 @@ const candidateSchema = new mongoose.Schema(
 
 // Indexes for performance
 candidateSchema.index({ createdAt: -1 });
-candidateSchema.index({ 'location.city': 1 });
+candidateSchema.index({ currentCity: 1 });
 candidateSchema.index({ skills: 1 });
-candidateSchema.index({ experience: 1 });
+candidateSchema.index({ overallExperience: 1 });
 
 // Virtual for full location
 candidateSchema.virtual('fullLocation').get(function () {
-    if (!this.location) return '';
-    const parts = [this.location.city, this.location.state, this.location.country].filter(Boolean);
+    const parts = [this.currentCity, this.country].filter(Boolean);
     return parts.join(', ');
 });
 
@@ -209,11 +216,11 @@ candidateSchema.pre('save', function (next) {
     // Basic info (40 points)
     if (this.name) strength += 5;
     if (this.email) strength += 5;
-    if (this.phone) strength += 5;
+    if (this.overallExperience) strength += 5;
     if (this.bio) strength += 10;
     if (this.avatar?.url) strength += 5;
-    if (this.location?.city) strength += 5;
-    if (this.currentRole) strength += 5;
+    if (this.currentCity) strength += 5;
+    if (this.currentCompany || this.currentRole) strength += 5;
 
     // Professional info (30 points)
     if (this.resume?.url) strength += 15;

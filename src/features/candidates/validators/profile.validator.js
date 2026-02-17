@@ -9,14 +9,24 @@ const updateProfileSchema = Joi.object({
     name: Joi.string().min(2).max(100).optional(),
     phone: Joi.string().pattern(/^[0-9]{10,15}$/).optional(),
     bio: Joi.string().max(500).optional(),
-    currentRole: Joi.string().max(100).optional(),
+    experienceSummary: Joi.string().max(1000).optional(),
+    linkedInUrl: Joi.string().uri().allow('').optional(),
+
+    currentRole: Joi.string().max(100).optional(), // optional legacy/alternate
+    currentCompany: Joi.string().max(100).optional(),
+
+    // Prefer overallExperience (matches model + frontend), but accept legacy 'experience' too
+    overallExperience: Joi.number().min(0).max(50).optional(),
     experience: Joi.number().min(0).max(50).optional(),
     noticePeriod: Joi.number().min(0).max(365).optional(),
 
+    // Prefer currentCity/country (matches model + frontend), but accept legacy 'location' too
+    currentCity: Joi.string().max(100).optional(),
+    country: Joi.string().max(100).optional(),
     location: Joi.object({
-        city: Joi.string().optional(),
-        state: Joi.string().optional(),
-        country: Joi.string().optional(),
+        city: Joi.string().max(100).optional(),
+        state: Joi.string().max(100).optional(),
+        country: Joi.string().max(100).optional(),
     }).optional(),
 
     expectedSalary: Joi.alternatives()

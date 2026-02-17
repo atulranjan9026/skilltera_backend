@@ -32,6 +32,12 @@ class ProfileService {
         // Transform to plain object
         const candidateObject = candidate.toObject();
 
+        // Backward-compatible naming for older data/UI
+        // If older records stored company in currentRole, expose it as currentCompany too
+        if (!candidateObject.currentCompany && candidateObject.currentRole) {
+            candidateObject.currentCompany = candidateObject.currentRole;
+        }
+
         // Transform skills array - Handle both populated and unpopulated cases
         if (candidateObject.skills && Array.isArray(candidateObject.skills)) {
             // console.log('Profile Skills', candidateObject.skills);
@@ -72,7 +78,7 @@ class ProfileService {
         // Transform frontend data to match backend schema
         const transformedData = { ...updateData };
 
-        // Map fullname to name (frontend uses fullname, backend uses name)
+        // Map fullname to name (older frontend uses fullname, backend uses name)
         if (transformedData.fullname) {
             transformedData.name = transformedData.fullname;
             delete transformedData.fullname;
@@ -84,26 +90,24 @@ class ProfileService {
         delete transformedData.education;
         delete transformedData.skills;
 
-        // Map overallExperience to experience (total years)
-        if (transformedData.overallExperience !== undefined) {
-            transformedData.experience = transformedData.overallExperience;
-            delete transformedData.overallExperience;
+        // Prefer overallExperience (schema field), but accept legacy 'experience'
+        if (transformedData.overallExperience === undefined && transformedData.experience !== undefined) {
+            transformedData.overallExperience = transformedData.experience;
         }
+        delete transformedData.experience;
 
-        // Map currentCity/country to location object
-        if (transformedData.currentCity || transformedData.country) {
-            transformedData.location = {
-                city: transformedData.currentCity,
-                country: transformedData.country,
-            };
-            delete transformedData.currentCity;
-            delete transformedData.country;
+        // Prefer currentCity/country, but accept legacy location object
+        if ((transformedData.currentCity === undefined && transformedData.country === undefined) && transformedData.location) {
+            if (transformedData.location.city !== undefined) transformedData.currentCity = transformedData.location.city;
+            if (transformedData.location.country !== undefined) transformedData.country = transformedData.location.country;
         }
+        delete transformedData.location;
 
-        // Map currentCompany to currentRole
-        if (transformedData.currentCompany) {
-            transformedData.currentRole = transformedData.currentCompany;
-            delete transformedData.currentCompany;
+        // Keep currentCompany as-is (schema field). If client still sends currentRole only, keep it too.
+
+        // Normalize linkedInUrl (avoid storing empty string)
+        if (typeof transformedData.linkedInUrl === 'string' && !transformedData.linkedInUrl.trim()) {
+            delete transformedData.linkedInUrl;
         }
 
         // Handle expectedSalary - ensure it's in the correct format

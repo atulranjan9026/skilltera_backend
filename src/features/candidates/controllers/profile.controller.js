@@ -128,12 +128,6 @@ exports.updateEducation = asyncHandler(async (req, res) => {
 });
 
 exports.deleteEducation = asyncHandler(async (req, res) => {
-    console.log('Delete education request:', {
-        userId: req.userId,
-        educationId: req.params.id,
-        headers: req.headers
-    });
-
     await educationService.deleteEducation(req.userId, req.params.id);
     const response = new ApiResponse(HTTP_STATUS.OK, null, SUCCESS_MESSAGES.EDUCATION_DELETED);
     response.send(res);
