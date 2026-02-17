@@ -107,15 +107,34 @@ class ProfileService {
         }
 
         // Handle expectedSalary - ensure it's in the correct format
-        if (transformedData.expectedSalary) {
+        if (transformedData.expectedSalary !== undefined && transformedData.expectedSalary !== null) {
             const salary = transformedData.expectedSalary;
-            if (typeof salary === 'string' || typeof salary === 'number') {
+
+            // If it's an empty string, don't attempt to update this field
+            if (typeof salary === 'string') {
+                const trimmed = salary.trim();
+                if (!trimmed) {
+                    delete transformedData.expectedSalary;
+                } else if (!Number.isNaN(Number(trimmed))) {
+                    const value = parseInt(trimmed, 10);
+                    transformedData.expectedSalary = {
+                        min: value,
+                        max: Math.round(value * 1.2), // 20% range
+                        currency: 'USD',
+                    };
+                } else {
+                    // Invalid numeric string - ignore update
+                    delete transformedData.expectedSalary;
+                }
+            } else if (typeof salary === 'number') {
+                const value = salary;
                 transformedData.expectedSalary = {
-                    min: parseInt(salary),
-                    max: parseInt(salary) * 1.2, // 20% range
+                    min: value,
+                    max: Math.round(value * 1.2),
                     currency: 'USD',
                 };
             }
+            // If it's already an object, we assume it matches the schema and leave it as-is
         }
 
         const candidate = await Candidate.findByIdAndUpdate(

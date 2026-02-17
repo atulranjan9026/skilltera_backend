@@ -27,7 +27,7 @@ const updateProfileSchema = Joi.object({
                 currency: Joi.string().optional(),
             }),
             Joi.number().min(0),
-            Joi.string().allow('')
+            Joi.string().pattern(/^[0-9]+$/)
         )
         .optional(),
 
