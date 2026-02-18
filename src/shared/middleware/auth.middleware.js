@@ -24,7 +24,7 @@ const authenticate = asyncHandler(async (req, res, next) => {
     // Get user from database
     const user = await Candidate.findById(decoded.userId)
         .select('-password -refreshTokens')
-        .populate('skills.skillId', 'name');
+        .populate('skills.skillId', 'skill name');
 
     if (!user) {
         throw ApiError.unauthorized(ERROR_MESSAGES.USER_NOT_FOUND);

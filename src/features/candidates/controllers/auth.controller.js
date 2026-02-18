@@ -45,7 +45,16 @@ exports.login = asyncHandler(async (req, res) => {
     const response = new ApiResponse(
         HTTP_STATUS.OK,
         {
-            candidate: result.candidate,
+            candidate: {
+                _id: result.candidate._id,
+                name: result.candidate.name,
+                email: result.candidate.email,
+                emailVerified: result.candidate.emailVerified,
+                isActive: result.candidate.isActive,
+                profileStrength: result.candidate.profileStrength,
+                avatar: result.candidate.avatar || null,
+                accessToken: result.accessToken,
+            },
             accessToken: result.accessToken,
         },
         'Login successful'
@@ -186,7 +195,16 @@ exports.googleAuth = asyncHandler(async (req, res) => {
     const response = new ApiResponse(
         HTTP_STATUS.OK,
         {
-            candidate: result.candidate,
+            candidate: {
+                _id: result.candidate._id,
+                name: result.candidate.name,
+                email: result.candidate.email,
+                emailVerified: result.candidate.emailVerified,
+                isActive: result.candidate.isActive,
+                profileStrength: result.candidate.profileStrength,
+                avatar: result.candidate.avatar || null,
+                accessToken: result.accessToken,
+            },
             accessToken: result.accessToken,
         },
         'Login successful'
@@ -201,9 +219,48 @@ exports.googleAuth = asyncHandler(async (req, res) => {
  * @access  Private
  */
 exports.getCurrentUser = asyncHandler(async (req, res) => {
+    const userObject = req.user?.toObject ? req.user.toObject() : req.user;
+
+    // Normalize skills to match profile API response
+    if (userObject?.skills && Array.isArray(userObject.skills)) {
+        userObject.skills = userObject.skills.map((skill) => {
+            // Populated
+            if (skill.skillId && typeof skill.skillId === 'object') {
+                return {
+                    skillId: skill.skillId._id,
+                    skillName: skill.skillId.skill || skill.skillId.name || null,
+                    id: skill._id || skill.id,
+                    experience: skill.experience || 0,
+                    rating: skill.rating || 0,
+                    isVerified: skill.isVerified || false,
+                };
+            }
+
+            // Unpopulated fallback
+            return {
+                skillId: skill.skillId,
+                skillName: null,
+                id: skill._id || skill.id,
+                experience: skill.experience || 0,
+                rating: skill.rating || 0,
+                isVerified: skill.isVerified || false,
+            };
+        });
+    }
+
+    const essentialData = {
+        _id: userObject._id,
+        name: userObject.name,
+        email: userObject.email,
+        emailVerified: userObject.emailVerified,
+        isActive: userObject.isActive,
+        profileStrength: userObject.profileStrength,
+        avatar: userObject.avatar || null,
+    };
+
     const response = new ApiResponse(
         HTTP_STATUS.OK,
-        req.user,
+        essentialData,
         'User fetched successfully'
     );
     response.send(res);

@@ -70,7 +70,7 @@ class AuthService {
      * Authenticate candidate and generate tokens
      * @param {string} email - Candidate email
      * @param {string} password - Candidate password
-     * @returns {Promise<object>} Candidate and tokens
+     * @returns {Promise<object>} Essential candidate data and tokens
      */
     async authenticateCandidate(email, password) {
         console.log('🔍 Authentication attempt for email:', email);
@@ -78,84 +78,53 @@ class AuthService {
         // Find candidate with password field
         console.log('🔍 Searching for candidate in database...');
         const candidate = await Candidate.findOne({ email })
-            .select('+password')
-            .populate('skills.skillId', 'skill name');
-        // console.log("candidate Skills : ", candidate.skills);
-        // console.log('🔍 Candidate found:', !!candidate);
+            .select('+password +avatar +emailVerified +isActive +profileStrength');
 
         if (!candidate) {
             throw ApiError.unauthorized(ERROR_MESSAGES.INVALID_CREDENTIALS);
         }
 
-        // console.log('🔍 Comparing password...');
         // Check password
         const isPasswordValid = await candidate.comparePassword(password);
-        // console.log('🔍 Password valid:', isPasswordValid);
 
         if (!isPasswordValid) {
             throw ApiError.unauthorized(ERROR_MESSAGES.INVALID_CREDENTIALS);
         }
 
-        // Check if email is verified
-        // if (!candidate.emailVerified) {
-        //     throw ApiError.forbidden(ERROR_MESSAGES.EMAIL_NOT_VERIFIED);
-        // }
-
         // Generate tokens
         const { accessToken, refreshToken } = TokenManager.generateTokenPair(candidate);
 
         // Save refresh token
-        // Save refresh token
-        // Use updateOne to avoid validation errors on legacy data
         await Candidate.updateOne(
             { _id: candidate._id },
             {
                 $push: {
                     refreshTokens: {
                         $each: [refreshToken],
-                        $slice: -5 // Keep last 5 tokens
+                        $slice: -5
                     }
                 },
                 $set: { lastLogin: new Date() }
             }
         );
 
-        // Remove sensitive data
-        const candidateObject = candidate.toObject();
-        delete candidateObject.password;
-        delete candidateObject.refreshTokens;
-        delete candidateObject.emailVerificationToken;
-
-        // Transform skills array - Handle both populated and unpopulated cases
-        if (candidateObject.skills && Array.isArray(candidateObject.skills)) {
-            candidateObject.skills = candidateObject.skills.map(skill => {
-                // console.log('skill,,,,', skill);
-                // Handle populated skillId (object)
-                if (skill.skillId && typeof skill.skillId === 'object') {
-                    return {
-                        skillId: skill.skillId._id,  // Keep the ID for updates/deletes
-                        skillName: skill.skillId.skill, // The actual skill name
-                        experience: skill.experience || 0,
-                        rating: skill.rating || 0,
-                        isVerified: skill.isVerified || false
-                    };
-                }
-
-                // Handle unpopulated skillId (just ObjectId)
-                return {
-                    skillId: skill.skillId,
-                    skillName: null, // Will need to populate separately
-                    experience: skill.experience || 0,
-                    rating: skill.rating || 0,
-                    isVerified: skill.isVerified || false
-                };
-            });
-        }
+        // Return only essential candidate data
+        const essentialData = {
+            _id: candidate._id,
+            name: candidate.name,
+            email: candidate.email,
+            emailVerified: candidate.emailVerified,
+            isActive: candidate.isActive,
+            profileStrength: candidate.profileStrength,
+            avatar: candidate.avatar || null,
+            accessToken,
+            refreshToken
+        };
 
         return {
-            candidate: candidateObject,
+            candidate: essentialData,
             accessToken,
-            refreshToken,
+            refreshToken
         };
     }
 
@@ -192,11 +161,11 @@ class AuthService {
 
         // Find by googleId first, then by email (for account linking)
         let candidate = await Candidate.findOne({ googleId })
-            .populate('skills.skillId', 'skill name');
+            .select('+avatar +emailVerified +isActive +profileStrength');
 
         if (!candidate) {
             candidate = await Candidate.findOne({ email })
-                .populate('skills.skillId', 'skill name');
+                .select('+avatar +emailVerified +isActive +profileStrength');
         }
 
         if (!candidate) {
@@ -249,23 +218,19 @@ class AuthService {
             }
         );
 
-        const candidateObject = candidate.toObject();
-        delete candidateObject.password;
-        delete candidateObject.refreshTokens;
-        delete candidateObject.emailVerificationToken;
-
-        if (candidateObject.skills && Array.isArray(candidateObject.skills)) {
-            candidateObject.skills = candidateObject.skills.map((skill) => ({
-                id: skill._id || skill.id,
-                experience: skill.experience,
-                rating: skill.rating,
-                skillName: skill.skillId?.skill || skill.skillId?.name || skill.skillId?.skillName || null,
-                isVerified: skill.isVerified,
-            }));
-        }
+        // Return only essential candidate data (no skills, experiences, etc.)
+        const essentialData = {
+            _id: candidate._id,
+            name: candidate.name,
+            email: candidate.email,
+            emailVerified: candidate.emailVerified,
+            isActive: candidate.isActive,
+            profileStrength: candidate.profileStrength,
+            avatar: candidate.avatar || null,
+        };
 
         return {
-            candidate: candidateObject,
+            candidate: essentialData,
             accessToken,
             refreshToken,
         };

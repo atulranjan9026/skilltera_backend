@@ -50,7 +50,7 @@ class ProfileService {
                         id: skill._id,
                         experience: skill.experience || 0,
                         rating: skill.rating || 0,
-                        isVerified: skill.isVerified || false
+                        isVerified: skill.active || false
                     };
                 }
 
@@ -60,7 +60,7 @@ class ProfileService {
                     skillName: null, // Will need to populate separately
                     experience: skill.experience || 0,
                     rating: skill.rating || 0,
-                    isVerified: skill.isVerified || false
+                    isVerified: skill.active || false
                 };
             });
         }
