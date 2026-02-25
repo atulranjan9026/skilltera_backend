@@ -28,6 +28,9 @@ router.get('/suggestions', jobController.getJobSuggestions);
 
 
 router.get('/location-suggestions', jobController.getLocationSuggestions);
-
+router.get('/saved', jobController.getSavedJobs);
+router.post('/apply/:jobId', jobController.applyToJob);
+router.post('/save', jobController.saveJob);
+router.delete('/unsave/:jobId', jobController.unsaveJob);
 
 module.exports = router;

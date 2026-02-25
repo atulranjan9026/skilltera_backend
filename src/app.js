@@ -12,6 +12,9 @@ const { errorHandler, notFound } = require('./shared/middleware/errorHandler.mid
 const { apiLimiter } = require('./shared/middleware/rateLimiter.middleware');
 const logger = require('./shared/utils/logger');
 
+// Initialize Models (must be loaded before routes to register schemas)
+require('./shared/models/company.model');
+
 // Import routes
 const candidateAuthRoutes = require('./features/candidates/routes/auth.routes');
 const candidateProfileRoutes = require('./features/candidates/routes/profile.routes');
@@ -86,7 +89,13 @@ const API_VERSION = process.env.API_VERSION || 'v1';
 // Candidate Routes
 app.use(`/api/${API_VERSION}/candidates/auth`, candidateAuthRoutes);
 app.use(`/api/${API_VERSION}/candidates/profile`, candidateProfileRoutes);
-app.use(`/api/${API_VERSION}/candidate/job`, candidateJobRoutes);
+app.use(`/api/${API_VERSION}/candidates/job`, candidateJobRoutes);
+
+// Alias route for saved jobs
+app.get(`/api/${API_VERSION}/candidates/saved`, require('./shared/middleware/auth.middleware').authenticate, require('./features/candidates/controllers/job.controller').getSavedJobs);
+
+// Alias route for applications
+app.get(`/api/${API_VERSION}/candidates/:candidateId/applications`, require('./shared/middleware/auth.middleware').authenticate, require('./features/candidates/controllers/job.controller').getApplications);
 
 
 

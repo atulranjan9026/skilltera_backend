@@ -18,7 +18,7 @@ const jobSchema = new mongoose.Schema({
     },
     companyId: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'Company',
+        ref: 'Companies',
         required: true,
         index: true
     },
@@ -30,7 +30,7 @@ const jobSchema = new mongoose.Schema({
     // Job Details
     jobType: {
         type: String,
-        enum: ['full-time', 'part-time', 'contract', 'internship', 'freelance'],
+        enum: ['full-time', 'part-time', 'contract', 'internship', 'freelance', 'Fulltime', 'Part Time', 'Contract', 'Internship', 'Freelance'],
         default: 'full-time',
         index: true
     },
@@ -118,7 +118,7 @@ const jobSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['draft', 'active', 'closed', 'on-hold'],
+        enum: ['draft', 'active', 'closed', 'on-hold', 'APPROVED'],
         default: 'active',
         index: true
     },
@@ -194,14 +194,20 @@ jobSchema.pre('save', function (next) {
 
 // Method to increment view count
 jobSchema.methods.incrementViews = async function () {
-    this.views += 1;
-    return this.save();
+    return this.constructor.findByIdAndUpdate(
+        this._id,
+        { $inc: { views: 1 } },
+        { new: true, validateBeforeSave: false }
+    );
 };
 
 // Method to increment applications count
 jobSchema.methods.incrementApplications = async function () {
-    this.applicationsCount += 1;
-    return this.save();
+    return this.constructor.findByIdAndUpdate(
+        this._id,
+        { $inc: { applicationsCount: 1 } },
+        { new: true, validateBeforeSave: false }
+    );
 };
 
 // Static method to find active jobs

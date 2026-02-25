@@ -1,5 +1,7 @@
 const Job = require('../../../shared/models/job.model');
 const Candidate = require('../models/candidate.model');
+const Application = require('../../../shared/models/application.model');
+const Company = require('../../../shared/models/company.model');
 const ApiError = require('../../../shared/utils/ApiError');
 const HTTP_STATUS = require('../../../shared/constants/httpStatus');
 
@@ -584,6 +586,218 @@ class JobService {
 
         return { cities, states, countries };
     }
+
+    /**
+     * Apply for a job
+     * @param {string} candidateId - Candidate ID
+     * @param {string} jobId - Job ID
+     * @param {Object} applicationData - Application details (coverLetter, resume etc)
+     * @returns {Object} Created application
+     */
+    async applyForJob(candidateId, jobId, applicationData = {}) {
+        try {
+            // 1. Validate job existence and status
+            const job = await Job.findById(jobId);
+            if (!job || job.status !== 'APPROVED') {
+                throw ApiError.badRequest('This job is no longer accepting applications');
+            }
+
+            // 2. Validate candidate
+            const candidate = await Candidate.findById(candidateId);
+            if (!candidate) {
+                throw ApiError.notFound('Candidate not found');
+            }
+
+            // 3. Create application
+            // Use unique index in MongoDB to handle duplicate prevention (code 11000)
+            const application = await Application.create({
+                candidate: candidateId,
+                job: jobId,
+                coverLetter: applicationData.coverLetter,
+                resume: applicationData.resume || candidate.resume,
+                status: 'applied',
+                appliedAt: applicationData.appliedAt || new Date()
+            });
+
+            // 4. Increment job application count
+            await job.incrementApplications();
+
+            return application;
+        } catch (error) {
+            console.error('Error in applyForJob:', error);
+            if (error.code === 11000) { // MongoDB duplicate key error
+                throw ApiError.badRequest('You have already applied for this job');
+            }
+            throw error;
+        }
+    }
+
+    /**
+     * Save a job for candidate
+     * @param {string} candidateId - Candidate ID
+     * @param {string} jobId - Job ID
+     * @returns {Object} Updated candidate with saved jobs
+     */
+    async saveJob(candidateId, jobId) {
+        try {
+            // Validate job exists
+            const job = await Job.findById(jobId);
+            if (!job) {
+                throw ApiError.notFound('Job not found');
+            }
+
+            // Add job to saved jobs (avoid duplicates with $addToSet)
+            const candidate = await Candidate.findByIdAndUpdate(
+                candidateId,
+                { $addToSet: { savedJobs: jobId } },
+                { new: true }
+            ).populate('savedJobs');
+
+            if (!candidate) {
+                throw ApiError.notFound('Candidate not found');
+            }
+
+            return candidate;
+        } catch (error) {
+            console.error('Error in saveJob:', error);
+            if (error.code === 11000) {
+                throw ApiError.badRequest('Job already saved');
+            }
+            throw error;
+        }
+    }
+
+    /**
+     * Unsave a job for candidate
+     * @param {string} candidateId - Candidate ID
+     * @param {string} jobId - Job ID
+     * @returns {Object} Updated candidate
+     */
+    async unsaveJob(candidateId, jobId) {
+        try {
+            // Remove job from saved jobs
+            const candidate = await Candidate.findByIdAndUpdate(
+                candidateId,
+                { $pull: { savedJobs: jobId } },
+                { new: true }
+            ).populate('savedJobs');
+
+            if (!candidate) {
+                throw ApiError.notFound('Candidate not found');
+            }
+
+            return candidate;
+        } catch (error) {
+            console.error('Error in unsaveJob:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get saved jobs for candidate
+     * @param {string} candidateId - Candidate ID
+     * @param {Object} options - Query options (page, limit)
+     * @returns {Object} Saved jobs with pagination
+     */
+    async getSavedJobs(candidateId, options = {}) {
+        try {
+            const page = Math.max(1, parseInt(options.page) || 1);
+            const limit = Math.min(50, Math.max(1, parseInt(options.limit) || 10));
+            const skip = (page - 1) * limit;
+
+            // Get candidate and count total saved jobs
+            const candidate = await Candidate.findById(candidateId);
+            if (!candidate) {
+                throw ApiError.notFound('Candidate not found');
+            }
+
+            const total = candidate.savedJobs.length;
+
+            // Get paginated saved jobs with full details
+            const savedJobs = await Candidate.findById(candidateId)
+                .select('savedJobs')
+                .populate({
+                    path: 'savedJobs',
+                    select: 'jobTitle title description city state country jobType workExperience postedOn salary companyId',
+                    populate: {
+                        path: 'companyId',
+                        select: 'companyName'
+                    }
+                })
+                .lean();
+
+            // Apply pagination on the frontend since populate doesn't handle skip/limit properly with lean
+            const paginatedJobs = savedJobs.savedJobs
+                ? savedJobs.savedJobs.slice(skip, skip + limit)
+                : [];
+
+            // Calculate pagination
+            const pagination = this.calculatePagination(page, limit, total);
+
+            return {
+                jobs: paginatedJobs,
+                pagination
+            };
+        } catch (error) {
+            console.error('Error in getSavedJobs:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get applications for candidate
+     * @param {string} candidateId - Candidate ID
+     * @param {Object} options - Query options (page, limit, status)
+     * @returns {Object} Applications with pagination
+     */
+    async getApplications(candidateId, options = {}) {
+        try {
+            const page = Math.max(1, parseInt(options.page) || 1);
+            const limit = Math.min(50, Math.max(1, parseInt(options.limit) || 10));
+            const skip = (page - 1) * limit;
+
+            const candidate = await Candidate.findById(candidateId);
+            if (!candidate) {
+                throw ApiError.notFound('Candidate not found');
+            }
+
+            // Build query
+            const query = { candidate: candidateId };
+            if (options.status) {
+                query.status = options.status;
+            }
+
+            // Get total count
+            const total = await Application.countDocuments(query);
+
+            // Get paginated applications with job details
+            const applications = await Application.find(query)
+                .populate({
+                    path: 'job',
+                    select: 'jobTitle title description city state country jobType workExperience postedOn salary companyId',
+                    populate: {
+                        path: 'companyId',
+                        select: 'companyName'
+                    }
+                })
+                .sort({ appliedAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .lean();
+
+            // Calculate pagination
+            const pagination = this.calculatePagination(page, limit, total);
+
+            return {
+                applications,
+                pagination
+            };
+        } catch (error) {
+            console.error('Error in getApplications:', error);
+            throw error;
+        }
+    }
+
 }
 
 module.exports = new JobService();

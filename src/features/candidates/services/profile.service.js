@@ -39,8 +39,7 @@ class ProfileService {
         }
 
         // Transform skills array - Handle both populated and unpopulated cases
-        if (candidateObject.skills && Array.isArray(candidateObject.skills)) {
-            // console.log('Profile Skills', candidateObject.skills);
+            if (candidateObject.skills && Array.isArray(candidateObject.skills)) {
             candidateObject.skills = candidateObject.skills.map(skill => {
                 // Handle populated skillId (object)
                 if (skill.skillId && typeof skill.skillId === 'object') {

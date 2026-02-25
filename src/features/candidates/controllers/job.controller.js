@@ -104,5 +104,139 @@ exports.getLocationSuggestions = asyncHandler(async (req, res) => {
     response.send(res);
 });
 
+/**
+ * @route   POST /api/v1/candidate/job/apply/:jobId
+ * @desc    Apply for a job
+ * @access  Private
+ */
+exports.applyToJob = asyncHandler(async (req, res) => {
+    const candidateId = req.userId; // From auth middleware
+    const { jobId } = req.params;
+    const applicationData = req.body;
+
+    const application = await jobService.applyForJob(candidateId, jobId, applicationData);
+
+    const response = new ApiResponse(
+        HTTP_STATUS.CREATED,
+        application,
+        'Application submitted successfully'
+    );
+
+    response.send(res);
+});
+
+/**
+ * @route   POST /api/v1/candidate/job/save
+ * @desc    Save a job for candidate
+ * @access  Private
+ * @body    { jobId }
+ */
+exports.saveJob = asyncHandler(async (req, res) => {
+    const candidateId = req.userId;
+    const { jobId } = req.body;
+
+    if (!jobId) {
+        const response = new ApiResponse(
+            HTTP_STATUS.BAD_REQUEST,
+            null,
+            'Job ID is required'
+        );
+        return response.send(res);
+    }
+
+    const candidate = await jobService.saveJob(candidateId, jobId);
+
+    const response = new ApiResponse(
+        HTTP_STATUS.OK,
+        candidate,
+        'Job saved successfully'
+    );
+
+    response.send(res);
+});
+
+/**
+ * @route   DELETE /api/v1/candidate/job/unsave/:jobId
+ * @desc    Remove saved job
+ * @access  Private
+ * @params  jobId
+ */
+exports.unsaveJob = asyncHandler(async (req, res) => {
+    const candidateId = req.userId;
+    const { jobId } = req.params;
+
+    const candidate = await jobService.unsaveJob(candidateId, jobId);
+
+    const response = new ApiResponse(
+        HTTP_STATUS.OK,
+        candidate,
+        'Job removed from saved list'
+    );
+
+    response.send(res);
+});
+
+/**
+ * @route   GET /api/v1/candidate/saved
+ * @desc    Get saved jobs for candidate
+ * @access  Private
+ * @query   page, limit
+ */
+exports.getSavedJobs = asyncHandler(async (req, res) => {
+    const candidateId = req.userId;
+    const options = {
+        page: req.query.page,
+        limit: req.query.limit
+    };
+
+    const result = await jobService.getSavedJobs(candidateId, options);
+
+    const response = new ApiResponse(
+        HTTP_STATUS.OK,
+        result,
+        'Saved jobs retrieved successfully'
+    );
+
+    response.send(res);
+});
+
+/**
+ * @route   GET /api/v1/candidates/:candidateId/applications
+ * @desc    Get applications for a candidate
+ * @access  Private
+ * @params  candidateId
+ * @query   page, limit, status
+ */
+exports.getApplications = asyncHandler(async (req, res) => {
+    const userId = req.userId;
+    const { candidateId } = req.params;
+
+    // Ensure user can only access their own applications
+    if (userId.toString() !== candidateId.toString()) {
+        const response = new ApiResponse(
+            HTTP_STATUS.FORBIDDEN,
+            null,
+            'Unauthorized access'
+        );
+        return response.send(res);
+    }
+
+    const options = {
+        page: req.query.page,
+        limit: req.query.limit,
+        status: req.query.status
+    };
+
+    const result = await jobService.getApplications(candidateId, options);
+
+    const response = new ApiResponse(
+        HTTP_STATUS.OK,
+        result,
+        'Applications retrieved successfully'
+    );
+
+    response.send(res);
+});
+
 
 
