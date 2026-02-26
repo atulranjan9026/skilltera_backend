@@ -3,6 +3,9 @@ const ApiError = require('../utils/ApiError');
 const TokenManager = require('../utils/tokenManager');
 const { ERROR_MESSAGES } = require('../constants');
 const Candidate = require('../../features/candidates/models/candidate.model');
+const Company = require('../models/company.model');
+const HiringManager = require('../models/hiringManager.model');
+const Interviewer = require('../models/interviewer.model');
 
 /**
  * Middleware to authenticate user using JWT
@@ -21,10 +24,36 @@ const authenticate = asyncHandler(async (req, res, next) => {
     // Verify token
     const decoded = TokenManager.verifyAccessToken(token);
 
-    // Get user from database
-    const user = await Candidate.findById(decoded.userId)
-        .select('-password -refreshTokens')
-        .populate('skills.skillId', 'skill name');
+    // Get user based on role
+    let user = null;
+    const { role } = decoded;
+
+    switch (role) {
+        case 'candidate':
+            user = await Candidate.findById(decoded.userId)
+                .select('-password -refreshTokens')
+                .populate('skills.skillId', 'skill name');
+            break;
+        
+        case 'company':
+            user = await Company.findById(decoded.userId).select('-password');
+            break;
+        
+        case 'hiring_manager':
+            user = await HiringManager.findById(decoded.userId)
+                .select('-password')
+                .populate({ path: 'companyId', select: 'companyName email' });
+            break;
+        
+        case 'interviewer':
+            user = await Interviewer.findById(decoded.userId)
+                .select('-password')
+                .populate({ path: 'companyId', select: 'companyName email' });
+            break;
+        
+        default:
+            throw ApiError.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
+    }
 
     if (!user) {
         throw ApiError.unauthorized(ERROR_MESSAGES.USER_NOT_FOUND);
@@ -38,7 +67,7 @@ const authenticate = asyncHandler(async (req, res, next) => {
     // Attach user to request
     req.user = user;
     req.userId = user._id;
-    req.userRole = user.role || 'candidate';
+    req.userRole = role;
 
     next();
 });
@@ -55,12 +84,36 @@ const optionalAuth = asyncHandler(async (req, res, next) => {
             const token = authHeader.split(' ')[1];
             const decoded = TokenManager.verifyAccessToken(token);
 
-            const user = await Candidate.findById(decoded.userId).select('-password -refreshTokens');
+            // Get user based on role
+            let user = null;
+            const { role } = decoded;
 
-            if (user && user.emailVerified) {
+            switch (role) {
+                case 'candidate':
+                    user = await Candidate.findById(decoded.userId).select('-password -refreshTokens');
+                    break;
+                
+                case 'company':
+                    user = await Company.findById(decoded.userId).select('-password');
+                    break;
+                
+                case 'hiring_manager':
+                    user = await HiringManager.findById(decoded.userId)
+                        .select('-password')
+                        .populate({ path: 'companyId', select: 'companyName email' });
+                    break;
+                
+                case 'interviewer':
+                    user = await Interviewer.findById(decoded.userId)
+                        .select('-password')
+                        .populate({ path: 'companyId', select: 'companyName email' });
+                    break;
+            }
+
+            if (user) {
                 req.user = user;
                 req.userId = user._id;
-                req.userRole = user.role || 'candidate';
+                req.userRole = role;
             }
         }
     } catch (error) {
@@ -115,7 +168,26 @@ const verifyRefreshToken = asyncHandler(async (req, res, next) => {
     const decoded = TokenManager.verifyRefreshToken(refreshToken);
 
     // Get user and check if refresh token exists in database
-    const user = await Candidate.findById(decoded.userId);
+    let user = null;
+    const { role } = decoded;
+
+    switch (role) {
+        case 'candidate':
+            user = await Candidate.findById(decoded.userId);
+            break;
+        
+        case 'company':
+            user = await Company.findById(decoded.userId);
+            break;
+        
+        case 'hiring_manager':
+            user = await HiringManager.findById(decoded.userId);
+            break;
+        
+        case 'interviewer':
+            user = await Interviewer.findById(decoded.userId);
+            break;
+    }
 
     if (!user) {
         throw ApiError.unauthorized(ERROR_MESSAGES.USER_NOT_FOUND);

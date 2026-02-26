@@ -14,6 +14,8 @@ const logger = require('./shared/utils/logger');
 
 // Initialize Models (must be loaded before routes to register schemas)
 require('./shared/models/company.model');
+require('./shared/models/hiringManager.model');
+require('./shared/models/interviewer.model');
 
 // Import routes
 const candidateAuthRoutes = require('./features/candidates/routes/auth.routes');
@@ -23,7 +25,7 @@ const candidateSkillRoutes = require('./features/candidates/routes/skill.routes'
 
 
 // Company Routes
-// const candidateCompanyRoutes = require('./features/Company/routes/company.routes');
+const companyRoutes = require('./features/Company/routes/company.routes');
 
 /**
  * Express Application Setup
@@ -102,7 +104,7 @@ app.get(`/api/${API_VERSION}/candidates/:candidateId/applications`, require('./s
 
 // app.use(`/api/${API_VERSION}/candidate/skills`, candidateSkillRoutes);
 // Company Routes
-// app.use(`/api/${API_VERSION}/companies`, candidateCompanyRoutes);
+app.use(`/api/${API_VERSION}/company`, companyRoutes);
 
 
 // API Health Check (versioned)
