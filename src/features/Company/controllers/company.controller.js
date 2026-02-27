@@ -1,4 +1,5 @@
 const bcrypt = require('bcrypt');
+const mongoose = require('mongoose');
 const asyncHandler = require('../../../shared/utils/asyncHandler');
 const ApiResponse = require('../../../shared/utils/ApiResponse');
 const ApiError = require('../../../shared/utils/ApiError');
@@ -11,7 +12,7 @@ const HiringManager = require('../../../shared/models/hiringManager.model');
 const Interviewer = require('../../../shared/models/interviewer.model');
 const Job = require('../../../shared/models/job.model');
 const Candidate = require('../../candidates/models/candidate.model');
-
+const { ObjectId } = require('mongodb');
 /**
  * Company Signup
  * @route   POST /api/v1/company/auth/signup
@@ -147,38 +148,44 @@ exports.getCompanyJobs = asyncHandler(async (req, res) => {
     const { companyId } = req.params;
     const { page = 1, limit = 10, status, active } = req.query;
 
+    // console.log('--- getCompanyJobs START ---');
+    console.log('Params  :', { companyId });
+    console.log('Query   :', { page, limit, status, active });
+
     // Validate company exists
     const company = await Company.findById(companyId);
+    // console.log('Company found:', company ? `${company.companyName} (${company._id})` : 'NOT FOUND');
     if (!company) {
         throw ApiError.notFound('Company not found');
     }
 
-    // Build query
+    // Build query - adjust for actual data structure
     const query = { companyId };
-    
-    if (status) {
-        query.status = status;
-    }
-    
-    if (active !== undefined) {
-        query.active = active === 'true';
-    }
+    if (status)               query.status = status;
+    if (active !== undefined) query.active = active === 'true';
+    // console.log('DB query:', JSON.stringify(query));
 
     const skip = (page - 1) * limit;
-    
-    const jobs = await Job.find(query)
+    // console.log('Pagination:', { page, limit, skip });
+
+    // Query using raw MongoDB collection to match actual data structure
+    const jobList = await mongoose.connection.db.collection('jobs')
+        .find(query)
         .sort({ postedOn: -1 })
         .skip(skip)
         .limit(parseInt(limit))
-        .populate('companyId', 'companyName email')
-        .lean();
+        .toArray();
 
-    const total = await Job.countDocuments(query);
+    const total = await mongoose.connection.db.collection('jobs').countDocuments(query);
+
+    // console.log(`Jobs fetched: ${jobList.length} of ${total} total`);
+    // console.log('Job IDs:', jobList.map(j => j._id));
+    // console.log('--- getCompanyJobs END ---');
 
     return new ApiResponse(
         HTTP_STATUS.OK,
         {
-            jobs,
+            jobs: jobList,
             pagination: {
                 currentPage: parseInt(page),
                 totalPages: Math.ceil(total / limit),
@@ -200,93 +207,127 @@ exports.getCompanyApplications = asyncHandler(async (req, res) => {
     const { companyId } = req.params;
     const { page = 1, limit = 10, status, jobId } = req.query;
 
-    // Validate company exists
+    console.log('--- getCompanyApplications START ---');
+    console.log('Params  :', { companyId });
+    console.log('Query   :', { page, limit, status, jobId });
+
     const company = await Company.findById(companyId);
-    if (!company) {
-        throw ApiError.notFound('Company not found');
-    }
+    console.log('Company found:', company ? `${company.companyName} (${company._id})` : 'NOT FOUND');
+    if (!company) throw ApiError.notFound('Company not found');
 
     // Get all jobs for this company
-    const companyJobs = await Job.find({ companyId }).select('_id').lean();
-    const jobIds = companyJobs.map(job => job._id);
+    console.log('Searching for companyId:', companyId, 'Type:', typeof companyId);
+    
+    // Check what companyId types exist in jobs collection
+    const sampleJobs = await mongoose.connection.db.collection('jobs')
+        .find({})
+        .limit(3)
+        .toArray();
+    console.log('Sample job companyId values:', sampleJobs.map(job => ({ 
+        companyId: job.companyId, 
+        companyIdType: typeof job.companyId,
+        jobTitle: job.jobTitle 
+    })));
+    
+    // Try both string and ObjectId
+    const companyJobs = await mongoose.connection.db.collection('jobs')
+        .find({ 
+            $or: [
+                { companyId: companyId },
+                { companyId: new ObjectId(companyId) }
+            ]
+        })
+        .project({ _id: 1 })
+        .toArray();
 
-    if (jobIds.length === 0) {
-        return new ApiResponse(
-            HTTP_STATUS.OK,
-            {
-                applications: [],
-                pagination: {
-                    currentPage: parseInt(page),
-                    totalPages: 0,
-                    totalApplications: 0,
-                    hasNextPage: false,
-                    hasPrevPage: false
-                }
-            },
-            'No applications found - company has no jobs'
-        ).send(res);
+    console.log('Company jobs found:', companyJobs.length);
+
+    if (companyJobs.length === 0) {
+        return new ApiResponse(HTTP_STATUS.OK, {
+            applications: [],
+            pagination: { currentPage: parseInt(page), totalPages: 0, totalApplications: 0, hasNextPage: false, hasPrevPage: false }
+        }, 'No applications found - company has no jobs').send(res);
     }
 
-    // Build query for candidates with applications to company jobs
-    const query = { 
-        'applications.jobId': { $in: jobIds }
-    };
+    // ✅ Keep as ObjectIds — applications.job is stored as ObjectId, not string
+    const jobObjectIds = companyJobs.map(job => job._id);
+    console.log('Job ObjectIds (first 3):', jobObjectIds.slice(0, 3));
 
-    if (status) {
-        query['applications.status'] = status;
-    }
+    // Build query using ObjectIds
+    const query = { job: { $in: jobObjectIds } };
 
-    if (jobId) {
-        query['applications.jobId'] = jobId;
-    }
+    if (status) query.status = status;
+    if (jobId)  query.job = new ObjectId(jobId); // single filter override
 
-    const skip = (page - 1) * limit;
+    // console.log('Final query:', JSON.stringify(query));
 
-    const candidates = await Candidate.find(query)
-        .select('name email phone applications')
-        .populate('applications.jobId', 'jobTitle jobType companyId')
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    console.log('Pagination:', { page, limit, skip });
+
+    // Verify match before querying
+    const matchCheck = await mongoose.connection.db.collection('applications')
+        .countDocuments({ job: { $in: jobObjectIds } });
+    console.log('Matching applications in DB:', matchCheck);
+
+    const applications = await mongoose.connection.db.collection('applications')
+        .find(query)
+        .sort({ appliedAt: -1 })
         .skip(skip)
         .limit(parseInt(limit))
-        .lean();
+        .toArray();
 
-    // Extract and format applications
-    const applications = [];
-    candidates.forEach(candidate => {
-        candidate.applications.forEach(app => {
-            if (jobIds.includes(app.jobId._id.toString())) {
-                applications.push({
+    console.log('Applications fetched:', applications.length);
+
+    // Populate candidate and job details
+    const populatedApplications = [];
+    for (const app of applications) {
+        try {
+            const candidate = await mongoose.connection.db.collection('candidates')
+                .findOne({ _id: app.candidate });
+
+            const job = await mongoose.connection.db.collection('jobs')
+                .findOne({ _id: app.job });
+
+            if (candidate && job) {
+                populatedApplications.push({
                     _id: app._id,
                     candidate: {
                         _id: candidate._id,
-                        name: candidate.name,
+                        name: candidate.fullname || candidate.name,
                         email: candidate.email,
                         phone: candidate.phone
                     },
-                    job: app.jobId,
+                    job: {
+                        _id: job._id,
+                        jobTitle: job.jobTitle,
+                        jobType: job.jobType,
+                        companyId: job.companyId
+                    },
                     appliedAt: app.appliedAt,
-                    status: app.status
+                    status: app.status,
+                    resume: app.resume,
+                    statusHistory: app.statusHistory
                 });
             }
-        });
-    });
+        } catch (err) {
+            console.log('Error populating application:', err.message);
+        }
+    }
 
-    // Sort by applied date
-    applications.sort((a, b) => new Date(b.appliedAt) - new Date(a.appliedAt));
+    const total = await mongoose.connection.db.collection('applications')
+        .countDocuments(query);
 
-    const total = await Candidate.countDocuments(query);
+    console.log('Populated:', populatedApplications.length, '| Total:', total);
+    console.log('--- getCompanyApplications END ---');
 
-    return new ApiResponse(
-        HTTP_STATUS.OK,
-        {
-            applications,
-            pagination: {
-                currentPage: parseInt(page),
-                totalPages: Math.ceil(total / limit),
-                totalApplications: total,
-                hasNextPage: page < Math.ceil(total / limit),
-                hasPrevPage: page > 1
-            }
-        },
-        'Company applications retrieved successfully'
-    ).send(res);
+    return new ApiResponse(HTTP_STATUS.OK, {
+        applications: populatedApplications,
+        pagination: {
+            currentPage: parseInt(page),
+            totalPages: Math.ceil(total / parseInt(limit)),
+            totalApplications: total,
+            hasNextPage: parseInt(page) < Math.ceil(total / parseInt(limit)),
+            hasPrevPage: parseInt(page) > 1
+        }
+    }, 'Company applications retrieved successfully').send(res);
 });

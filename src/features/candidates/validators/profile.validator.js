@@ -14,37 +14,27 @@ const Joi = require('joi');
 
 const updateProfileSchema = Joi.object({
 
-    name: Joi.string().trim().min(2).max(100).optional(),
+    name: Joi.string().min(2).max(100).optional(),
 
-    phone: Joi.string().trim().pattern(/^[0-9]{10,15}$/).optional(),
+    phone: Joi.string().pattern(/^[0-9]{10,15}$/).optional(),
 
-    bio: Joi.string().trim().max(500).optional(),
+    bio: Joi.string().max(500).optional(),
 
-    currentCity: Joi.string().trim().max(100).optional(),
-
-    country: Joi.string().trim().max(100).optional(),
-
-    currentCompany: Joi.string().trim().max(200).optional(),
-
-    currentRole: Joi.string().trim().max(100).optional(),
-
-    overallExperience: Joi.number().min(0).max(50).optional(),
+    currentRole: Joi.string().max(100).optional(),
 
     experience: Joi.number().min(0).max(50).optional(),
 
     noticePeriod: Joi.number().min(0).max(365).optional(),
 
-    linkedInUrl: Joi.string().trim().uri().optional().allow(''),
 
-    experienceSummary: Joi.string().trim().max(1000).optional(),
 
     location: Joi.object({
 
-        city: Joi.string().trim().optional(),
+        city: Joi.string().optional(),
 
-        state: Joi.string().trim().optional(),
+        state: Joi.string().optional(),
 
-        country: Joi.string().trim().optional(),
+        country: Joi.string().optional(),
 
     }).optional(),
 
@@ -66,7 +56,7 @@ const updateProfileSchema = Joi.object({
 
             Joi.number().min(0),
 
-            Joi.string().trim()
+            Joi.string()
 
         )
 
