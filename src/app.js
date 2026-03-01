@@ -22,6 +22,7 @@ const candidateAuthRoutes = require('./features/candidates/routes/auth.routes');
 const candidateProfileRoutes = require('./features/candidates/routes/profile.routes');
 const candidateJobRoutes = require('./features/candidates/routes/job.routes');
 const candidateSkillRoutes = require('./features/candidates/routes/skill.routes');
+const testRoutes = require('./features/candidates/routes/test.routes');
 
 
 // Company Routes
@@ -98,6 +99,8 @@ app.get(`/api/${API_VERSION}/candidates/saved`, require('./shared/middleware/aut
 
 // Alias route for applications
 app.get(`/api/${API_VERSION}/candidates/:candidateId/applications`, require('./shared/middleware/auth.middleware').authenticate, require('./features/candidates/controllers/job.controller').getApplications);
+app.use(`/api/${API_VERSION}/candidates/test`, testRoutes);
+app.use(`/api/${API_VERSION}/candidate/job`, candidateJobRoutes);
 
 
 
