@@ -146,52 +146,68 @@ exports.companyLogin = asyncHandler(async (req, res) => {
  */
 exports.getCompanyJobs = asyncHandler(async (req, res) => {
     const { companyId } = req.params;
-    const { page = 1, limit = 10, status, active } = req.query;
+    const { status, active } = req.query;
 
-    // console.log('--- getCompanyJobs START ---');
-    console.log('Params  :', { companyId });
-    console.log('Query   :', { page, limit, status, active });
+    const page  = parseInt(req.query.page,  10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 10;
 
-    // Validate company exists
     const company = await Company.findById(companyId);
-    // console.log('Company found:', company ? `${company.companyName} (${company._id})` : 'NOT FOUND');
     if (!company) {
         throw ApiError.notFound('Company not found');
     }
 
-    // Build query - adjust for actual data structure
-    const query = { companyId };
-    if (status)               query.status = status;
-    if (active !== undefined) query.active = active === 'true';
-    // console.log('DB query:', JSON.stringify(query));
+    // FIX: getCompanyApplications already handles both string and ObjectId with $or,
+    // but getCompanyJobs was querying with { companyId } (plain string) only.
+    // Jobs may be stored with companyId as ObjectId — match both to be safe.
+    const query = {
+        $or: [
+            { companyId: companyId },
+            { companyId: new ObjectId(companyId) },
+        ]
+    };
+    if (status) query.$or.forEach(q => { q.status = status; }); // won't work cleanly
+    // Better approach: use $and to combine companyId match with optional filters:
+    const baseQuery = {
+        $or: [
+            { companyId: companyId },
+            { companyId: new ObjectId(companyId) },
+        ]
+    };
+    const filters = {};
+    if (status)               filters.status = status;
+    if (active !== undefined) filters.active = active === 'true';
+
+    // FIX: Use $and to combine the $or companyId match with additional filters
+    const finalQuery = Object.keys(filters).length > 0
+        ? { $and: [baseQuery, filters] }
+        : baseQuery;
 
     const skip = (page - 1) * limit;
-    // console.log('Pagination:', { page, limit, skip });
 
-    // Query using raw MongoDB collection to match actual data structure
-    const jobList = await mongoose.connection.db.collection('jobs')
-        .find(query)
-        .sort({ postedOn: -1 })
-        .skip(skip)
-        .limit(parseInt(limit))
-        .toArray();
+    // FIX: Run count and find in parallel (same as getCompanyApplications)
+    const [jobList, total] = await Promise.all([
+        mongoose.connection.db.collection('jobs')
+            .find(finalQuery)
+            .sort({ postedOn: -1 })
+            .skip(skip)
+            .limit(limit)
+            .toArray(),
+        mongoose.connection.db.collection('jobs')
+            .countDocuments(finalQuery),
+    ]);
 
-    const total = await mongoose.connection.db.collection('jobs').countDocuments(query);
-
-    // console.log(`Jobs fetched: ${jobList.length} of ${total} total`);
-    // console.log('Job IDs:', jobList.map(j => j._id));
-    // console.log('--- getCompanyJobs END ---');
+    const totalPages = Math.ceil(total / limit);
 
     return new ApiResponse(
         HTTP_STATUS.OK,
         {
             jobs: jobList,
             pagination: {
-                currentPage: parseInt(page),
-                totalPages: Math.ceil(total / limit),
+                currentPage: page,
+                totalPages,
                 totalJobs: total,
-                hasNextPage: page < Math.ceil(total / limit),
-                hasPrevPage: page > 1
+                hasNextPage: page < totalPages,
+                hasPrevPage: page > 1,
             }
         },
         'Company jobs retrieved successfully'
@@ -205,33 +221,16 @@ exports.getCompanyJobs = asyncHandler(async (req, res) => {
  */
 exports.getCompanyApplications = asyncHandler(async (req, res) => {
     const { companyId } = req.params;
-    const { page = 1, limit = 10, status, jobId } = req.query;
+    const { status, jobId } = req.query;
 
-    console.log('--- getCompanyApplications START ---');
-    console.log('Params  :', { companyId });
-    console.log('Query   :', { page, limit, status, jobId });
+    const page  = parseInt(req.query.page,  10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 10;
 
     const company = await Company.findById(companyId);
-    console.log('Company found:', company ? `${company.companyName} (${company._id})` : 'NOT FOUND');
     if (!company) throw ApiError.notFound('Company not found');
 
-    // Get all jobs for this company
-    console.log('Searching for companyId:', companyId, 'Type:', typeof companyId);
-    
-    // Check what companyId types exist in jobs collection
-    const sampleJobs = await mongoose.connection.db.collection('jobs')
-        .find({})
-        .limit(3)
-        .toArray();
-    console.log('Sample job companyId values:', sampleJobs.map(job => ({ 
-        companyId: job.companyId, 
-        companyIdType: typeof job.companyId,
-        jobTitle: job.jobTitle 
-    })));
-    
-    // Try both string and ObjectId
     const companyJobs = await mongoose.connection.db.collection('jobs')
-        .find({ 
+        .find({
             $or: [
                 { companyId: companyId },
                 { companyId: new ObjectId(companyId) }
@@ -240,53 +239,45 @@ exports.getCompanyApplications = asyncHandler(async (req, res) => {
         .project({ _id: 1 })
         .toArray();
 
-    console.log('Company jobs found:', companyJobs.length);
-
     if (companyJobs.length === 0) {
         return new ApiResponse(HTTP_STATUS.OK, {
             applications: [],
-            pagination: { currentPage: parseInt(page), totalPages: 0, totalApplications: 0, hasNextPage: false, hasPrevPage: false }
+            pagination: {
+                currentPage: page,
+                totalPages: 0,
+                totalApplications: 0,
+                hasNextPage: false,
+                hasPrevPage: false,
+            }
         }, 'No applications found - company has no jobs').send(res);
     }
 
-    // ✅ Keep as ObjectIds — applications.job is stored as ObjectId, not string
     const jobObjectIds = companyJobs.map(job => job._id);
-    console.log('Job ObjectIds (first 3):', jobObjectIds.slice(0, 3));
 
-    // Build query using ObjectIds
     const query = { job: { $in: jobObjectIds } };
-
     if (status) query.status = status;
-    if (jobId)  query.job = new ObjectId(jobId); // single filter override
+    if (jobId)  query.job = new ObjectId(jobId);
 
-    // console.log('Final query:', JSON.stringify(query));
+    const skip = (page - 1) * limit;
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    console.log('Pagination:', { page, limit, skip });
+    const [applications, total] = await Promise.all([
+        mongoose.connection.db.collection('applications')
+            .find(query)
+            .sort({ appliedAt: -1 })
+            .skip(skip)
+            .limit(limit)
+            .toArray(),
+        mongoose.connection.db.collection('applications')
+            .countDocuments(query),
+    ]);
 
-    // Verify match before querying
-    const matchCheck = await mongoose.connection.db.collection('applications')
-        .countDocuments({ job: { $in: jobObjectIds } });
-    console.log('Matching applications in DB:', matchCheck);
-
-    const applications = await mongoose.connection.db.collection('applications')
-        .find(query)
-        .sort({ appliedAt: -1 })
-        .skip(skip)
-        .limit(parseInt(limit))
-        .toArray();
-
-    console.log('Applications fetched:', applications.length);
-
-    // Populate candidate and job details
     const populatedApplications = [];
     for (const app of applications) {
         try {
-            const candidate = await mongoose.connection.db.collection('candidates')
-                .findOne({ _id: app.candidate });
-
-            const job = await mongoose.connection.db.collection('jobs')
-                .findOne({ _id: app.job });
+            const [candidate, job] = await Promise.all([
+                mongoose.connection.db.collection('candidates').findOne({ _id: app.candidate }),
+                mongoose.connection.db.collection('jobs').findOne({ _id: app.job }),
+            ]);
 
             if (candidate && job) {
                 populatedApplications.push({
@@ -295,39 +286,35 @@ exports.getCompanyApplications = asyncHandler(async (req, res) => {
                         _id: candidate._id,
                         name: candidate.fullname || candidate.name,
                         email: candidate.email,
-                        phone: candidate.phone
+                        phone: candidate.phone,
                     },
                     job: {
                         _id: job._id,
                         jobTitle: job.jobTitle,
                         jobType: job.jobType,
-                        companyId: job.companyId
+                        companyId: job.companyId,
                     },
                     appliedAt: app.appliedAt,
                     status: app.status,
                     resume: app.resume,
-                    statusHistory: app.statusHistory
+                    statusHistory: app.statusHistory,
                 });
             }
         } catch (err) {
-            console.log('Error populating application:', err.message);
+            console.error('Error populating application:', err.message);
         }
     }
 
-    const total = await mongoose.connection.db.collection('applications')
-        .countDocuments(query);
-
-    console.log('Populated:', populatedApplications.length, '| Total:', total);
-    console.log('--- getCompanyApplications END ---');
+    const totalPages = Math.ceil(total / limit);
 
     return new ApiResponse(HTTP_STATUS.OK, {
         applications: populatedApplications,
         pagination: {
-            currentPage: parseInt(page),
-            totalPages: Math.ceil(total / parseInt(limit)),
+            currentPage: page,
+            totalPages,
             totalApplications: total,
-            hasNextPage: parseInt(page) < Math.ceil(total / parseInt(limit)),
-            hasPrevPage: parseInt(page) > 1
+            hasNextPage: page < totalPages,
+            hasPrevPage: page > 1,
         }
     }, 'Company applications retrieved successfully').send(res);
 });
