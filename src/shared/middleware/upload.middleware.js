@@ -58,10 +58,23 @@ const uploadFields = (fields) => upload.fields(fields);
  */
 const uploadAny = () => upload.any();
 
+// Video-friendly multer (no file type filter) for test/assessment uploads
+const uploadVideo = multer({
+    storage,
+    limits: { fileSize: parseInt(process.env.MAX_VIDEO_SIZE) || 100 * 1024 * 1024 } // 100MB default
+});
+
+const uploadVideoFields = (fields) => uploadVideo.fields(fields);
+const uploadVideoSingle = (fieldName) => uploadVideo.single(fieldName);
+const uploadVideoAny = () => uploadVideo.any();
+
 module.exports = {
     upload,
     uploadSingle,
     uploadMultiple,
     uploadFields,
     uploadAny,
+    uploadVideoFields,
+    uploadVideoSingle,
+    uploadVideoAny,
 };

@@ -135,6 +135,12 @@ const candidateSchema = new mongoose.Schema(
             },
         ],
 
+        // Assessment / Test
+        test: [{
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Test',
+        }],
+
         // OAuth
         googleId: {
             type: String,
