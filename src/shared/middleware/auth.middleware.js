@@ -23,10 +23,14 @@ const authenticate = asyncHandler(async (req, res, next) => {
 
     // Verify token
     const decoded = TokenManager.verifyAccessToken(token);
+    
+    console.log('Decoded token:', decoded);
 
     // Get user based on role
     let user = null;
     const { role } = decoded;
+    
+    console.log('Token role:', role);
 
     switch (role) {
         case 'candidate':
@@ -37,6 +41,10 @@ const authenticate = asyncHandler(async (req, res, next) => {
         
         case 'company':
             user = await Company.findById(decoded.userId).select('-password');
+            // Ensure role is set properly for companies
+            if (user && !user.role) {
+                user.role = 'company';
+            }
             break;
         
         case 'hiring_manager':
@@ -67,7 +75,19 @@ const authenticate = asyncHandler(async (req, res, next) => {
     // Attach user to request
     req.user = user;
     req.userId = user._id;
-    req.userRole = role;
+    
+    // Determine role - use token role first, but fallback to model detection
+    let finalRole = role;
+    if (user && user.constructor.modelName === 'Company') {
+        finalRole = 'company';
+    } else if (user && user.constructor.modelName === 'Candidate') {
+        finalRole = 'candidate';
+    }
+    
+    req.userRole = finalRole;
+    
+    console.log('User attached to request:', user ? { _id: user._id, email: user.email, role: user.role, modelName: user.constructor.modelName } : 'null');
+    console.log('Final userRole:', req.userRole);
 
     next();
 });
@@ -144,7 +164,18 @@ const requireRole = (...roles) => {
             throw ApiError.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
         }
 
-        const userRole = req.userRole || req.user.role || 'candidate';
+        let userRole = req.userRole;
+        
+        // If no role is set, try to determine from user model
+        if (!userRole && req.user) {
+            if (req.user.constructor.modelName === 'Company') {
+                userRole = 'company';
+            } else if (req.user.constructor.modelName === 'Candidate') {
+                userRole = 'candidate';
+            }
+        }
+
+        console.log(`Role check - User role: ${userRole}, Required roles: ${roles.join(', ')}`);
 
         if (!roles.includes(userRole)) {
             throw ApiError.forbidden(ERROR_MESSAGES.FORBIDDEN);

@@ -27,6 +27,7 @@ const testRoutes = require('./features/candidates/routes/test.routes');
 
 // Company Routes
 const companyRoutes = require('./features/Company/routes/company.routes');
+const jobRoutes = require('./features/Company/routes/job.routes');
 
 /**
  * Express Application Setup
@@ -108,6 +109,7 @@ app.use(`/api/${API_VERSION}/candidate/job`, candidateJobRoutes);
 // app.use(`/api/${API_VERSION}/candidate/skills`, candidateSkillRoutes);
 // Company Routes
 app.use(`/api/${API_VERSION}/company`, companyRoutes);
+app.use(`/api/${API_VERSION}/company`, jobRoutes);
 
 
 // API Health Check (versioned)

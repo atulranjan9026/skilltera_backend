@@ -24,6 +24,11 @@ const companySchema = new mongoose.Schema(
             type: String,
             required: true,
         },
+        role: {
+            type: String,
+            default: 'company',
+            enum: ['company', 'admin']
+        },
         isApproved: {
             type: Boolean,
             default: false,
