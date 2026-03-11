@@ -4,6 +4,7 @@ const TokenManager = require('../utils/tokenManager');
 const { ERROR_MESSAGES } = require('../constants');
 const Candidate = require('../../features/candidates/models/candidate.model');
 const Company = require('../models/company.model');
+const CompanyUser = require('../../features/Company/models/companyUser.model');
 const HiringManager = require('../models/hiringManager.model');
 const Interviewer = require('../models/interviewer.model');
 
@@ -23,48 +24,63 @@ const authenticate = asyncHandler(async (req, res, next) => {
 
     // Verify token
     const decoded = TokenManager.verifyAccessToken(token);
-    
-    console.log('Decoded token:', decoded);
 
     // Get user based on role
     let user = null;
-    const { role } = decoded;
-    
-    console.log('Token role:', role);
+    const { role, isCompanyUser } = decoded;
 
-    switch (role) {
-        case 'candidate':
-            user = await Candidate.findById(decoded.userId)
-                .select('-password -refreshTokens')
-                .populate('skills.skillId', 'skill name');
-            break;
-        
-        case 'company':
-            user = await Company.findById(decoded.userId).select('-password');
-            // Ensure role is set properly for companies
-            if (user && !user.role) {
-                user.role = 'company';
-            }
-            break;
-        
-        case 'hiring_manager':
-            user = await HiringManager.findById(decoded.userId)
-                .select('-password')
-                .populate({ path: 'companyId', select: 'companyName email' });
-            break;
-        
-        case 'interviewer':
-            user = await Interviewer.findById(decoded.userId)
-                .select('-password')
-                .populate({ path: 'companyId', select: 'companyName email' });
-            break;
-        
-        default:
-            throw ApiError.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
+    // CompanyUser (unified schema) - check first
+    if (isCompanyUser && decoded.userId) {
+        user = await CompanyUser.findById(decoded.userId)
+            .select('-password')
+            .populate({ path: 'companyId', select: 'companyName email' });
+        if (user) {
+            user.role = role;
+            user.roles = decoded.roles || [];
+        }
+    }
+
+    if (!user) {
+        switch (role) {
+            case 'candidate':
+                user = await Candidate.findById(decoded.userId)
+                    .select('-password -refreshTokens')
+                    .populate('skills.skillId', 'skill name');
+                break;
+            
+            case 'company':
+                user = await Company.findById(decoded.userId).select('-password');
+                if (user && !user.role) {
+                    user.role = 'company';
+                }
+                break;
+            
+            case 'hiring_manager':
+                user = await HiringManager.findById(decoded.userId)
+                    .select('-password')
+                    .populate({ path: 'companyId', select: 'companyName email' });
+                break;
+            
+            case 'interviewer':
+                user = await Interviewer.findById(decoded.userId)
+                    .select('-password')
+                    .populate({ path: 'companyId', select: 'companyName email' });
+                break;
+            
+            default:
+                throw ApiError.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
+        }
     }
 
     if (!user) {
         throw ApiError.unauthorized(ERROR_MESSAGES.USER_NOT_FOUND);
+    }
+
+    // Normalize companyId for enterprise routes (Company has _id as company; others have companyId)
+    if (user.constructor.modelName === 'Company' || user.constructor.modelName === 'Companies') {
+        user.companyId = user._id;
+    } else if (user.companyId && user.companyId._id) {
+        user.companyId = user.companyId._id;
     }
 
     // Check if email is verified (commented out for development)
@@ -85,9 +101,6 @@ const authenticate = asyncHandler(async (req, res, next) => {
     }
     
     req.userRole = finalRole;
-    
-    console.log('User attached to request:', user ? { _id: user._id, email: user.email, role: user.role, modelName: user.constructor.modelName } : 'null');
-    console.log('Final userRole:', req.userRole);
 
     next();
 });
@@ -174,8 +187,6 @@ const requireRole = (...roles) => {
                 userRole = 'candidate';
             }
         }
-
-        console.log(`Role check - User role: ${userRole}, Required roles: ${roles.join(', ')}`);
 
         if (!roles.includes(userRole)) {
             throw ApiError.forbidden(ERROR_MESSAGES.FORBIDDEN);

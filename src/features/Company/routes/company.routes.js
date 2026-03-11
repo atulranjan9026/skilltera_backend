@@ -2,11 +2,12 @@ const express = require('express');
 const router = express.Router();
 
 // ── Controllers ─────────────────────────────────────────────────
-const { companySignup, companyLogin, getCompanyJobs, getCompanyApplications } = require('../controllers/company.controller');
+const { companySignup, companyLogin, getCompanyJobs, getCompanyApplications, updateApplicationStatus } = require('../controllers/company.controller');
 const { viewAllCompany, viewAllCompanyList } = require('../controllers/companyManagementController');
 
 // ── Middleware ─────────────────────────────────────────────────
 const { authenticate } = require('../../../shared/middleware/auth.middleware');
+const { authLimiter } = require('../../../shared/middleware/rateLimiter.middleware');
 
 // ── Auth Routes ─────────────────────────────────────────────────
 
@@ -19,10 +20,8 @@ router.post('/signup', companySignup); // alias
 // @route  POST /api/v1/company/auth/login
 // @desc   Unified login for Company Admin, Hiring Manager, Interviewer
 // @access Public
-router.post('/auth/login', companyLogin);
-router.post('/login', companyLogin); // alias
-
-// ── Company Data Routes ──────────────────────────────────────────
+router.post('/auth/login', authLimiter, companyLogin);
+router.post('/login', authLimiter, companyLogin); // alias
 
 // @route  GET /api/v1/company/all
 // @desc   Get all companies with full details
@@ -33,6 +32,10 @@ router.get('/all', viewAllCompany);
 // @desc   Get all company names (public safe)
 // @access Public
 router.get('/list', viewAllCompanyList);
+
+// ── Referral Routes (must be before /:companyId) ─────────────────
+const referralRoutes = require('./referral.routes');
+router.use('/', referralRoutes);
 
 // ── Company Specific Routes ──────────────────────────────────────
 // Apply authentication to company-specific routes
@@ -47,5 +50,10 @@ router.get('/:companyId/jobs', getCompanyJobs);
 // @desc   Get all applications for company's jobs
 // @access Private (Company Admin/Hiring Manager)
 router.get('/:companyId/applications', getCompanyApplications);
+
+// @route  PUT /api/v1/company/:companyId/applications/:applicationId
+// @desc   Update application status
+// @access Private (Company Admin/Hiring Manager)
+router.put('/:companyId/applications/:applicationId', updateApplicationStatus);
 
 module.exports = router;

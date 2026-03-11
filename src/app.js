@@ -16,6 +16,8 @@ const logger = require('./shared/utils/logger');
 require('./shared/models/company.model');
 require('./shared/models/hiringManager.model');
 require('./shared/models/interviewer.model');
+require('./features/Company/models/companyUser.model');
+require('./features/Company/models/referral.model');
 
 // Import routes
 const candidateAuthRoutes = require('./features/candidates/routes/auth.routes');

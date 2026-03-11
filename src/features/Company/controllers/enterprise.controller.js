@@ -1,8 +1,17 @@
+const bcrypt = require('bcrypt');
 const LOB = require('../models/lob.model');
+const CompanyUser = require('../models/companyUser.model');
 const HiringManager = require('../models/hiringManager.model');
 const BackupHiringManager = require('../models/backupHiringManager.model');
 const Recruiter = require('../models/recruiter.model');
 const { validationResult } = require('express-validator');
+const { generatePassword } = require('../../../shared/utilities/passwordGenerator');
+const {
+  sendHiringManagerWelcomeEmail,
+  sendInterviewerWelcomeEmail,
+  sendRecruiterWelcomeEmail,
+  sendBackupHiringManagerWelcomeEmail,
+} = require('../../../shared/utilities/companyEmails');
 
 // ─── LOB Controllers ───────────────────────────────────────────────────────────
 
@@ -36,7 +45,7 @@ exports.createLOB = async (req, res) => {
       name,
       description,
       companyId,
-      createdBy: req.user.id
+      createdBy: req.user._id
     });
 
     await lob.save();
@@ -129,7 +138,7 @@ exports.bulkCreateLOBs = async (req, res) => {
           name: item.name,
           description: item.description,
           companyId,
-          createdBy: req.user.id
+          createdBy: req.user._id
         });
 
         await lob.save();
@@ -151,13 +160,19 @@ exports.bulkCreateLOBs = async (req, res) => {
   }
 };
 
-// ─── Hiring Manager Controllers ───────────────────────────────────────────────
+// ─── Hiring Manager Controllers (CompanyUser with role hiring_manager) ─────────
 
 exports.getAllHiringManagers = async (req, res) => {
   try {
-    const { companyId } = req.user;
-    const hiringManagers = await HiringManager.find({ companyId, isActive: true })
-      .sort({ createdAt: -1 });
+    const companyId = req.user.companyId || req.user._id;
+    const hiringManagers = await CompanyUser.find({
+      companyId,
+      roles: 'hiring_manager',
+      isActive: true,
+    })
+      .select('-password')
+      .sort({ createdAt: -1 })
+      .lean();
     res.json({ hiringManagers });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch hiring managers' });
@@ -171,24 +186,36 @@ exports.createHiringManager = async (req, res) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { companyId } = req.user;
+    const companyId = req.user.companyId || req.user._id;
     const { name, email } = req.body;
+    const createdBy = req.user._id;
 
-    // Check if hiring manager already exists for this company
-    const existingHM = await HiringManager.findOne({ email, companyId });
-    if (existingHM) {
-      return res.status(400).json({ error: 'Hiring manager with this email already exists' });
+    const existingUser = await CompanyUser.findOne({ email: email.toLowerCase().trim() });
+    if (existingUser) {
+      return res.status(400).json({ error: 'User with this email already exists' });
     }
 
-    const hiringManager = new HiringManager({
+    const plainPassword = generatePassword();
+    const hashedPassword = await bcrypt.hash(plainPassword, await bcrypt.genSalt());
+
+    const hiringManager = await CompanyUser.create({
       name,
-      email,
+      email: email.toLowerCase().trim(),
+      password: hashedPassword,
       companyId,
-      createdBy: req.user.id
+      roles: ['hiring_manager'],
+      createdBy,
     });
 
-    await hiringManager.save();
-    res.status(201).json({ message: 'Hiring manager created successfully', hiringManager });
+    try {
+      await sendHiringManagerWelcomeEmail(hiringManager.email, hiringManager.name, plainPassword);
+    } catch (err) {
+      console.error('Error sending hiring manager welcome email:', err);
+    }
+
+    const result = hiringManager.toObject();
+    delete result.password;
+    res.status(201).json({ message: 'Hiring manager created successfully', hiringManager: result });
   } catch (error) {
     res.status(500).json({ error: 'Failed to create hiring manager' });
   }
@@ -201,28 +228,33 @@ exports.updateHiringManager = async (req, res) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { companyId } = req.user;
+    const companyId = req.user.companyId || req.user._id;
     const { id } = req.params;
     const { name, email } = req.body;
 
-    const hiringManager = await HiringManager.findOne({ _id: id, companyId, isActive: true });
+    const hiringManager = await CompanyUser.findOne({
+      _id: id,
+      companyId,
+      roles: 'hiring_manager',
+      isActive: true,
+    });
     if (!hiringManager) {
       return res.status(404).json({ error: 'Hiring manager not found' });
     }
 
-    // Check if email is being changed and if it already exists
-    if (email !== hiringManager.email) {
-      const existingHM = await HiringManager.findOne({ email, companyId, _id: { $ne: id } });
-      if (existingHM) {
-        return res.status(400).json({ error: 'Hiring manager with this email already exists' });
+    if (email && email !== hiringManager.email) {
+      const existing = await CompanyUser.findOne({ email: email.toLowerCase().trim() });
+      if (existing) {
+        return res.status(400).json({ error: 'User with this email already exists' });
       }
+      hiringManager.email = email.toLowerCase().trim();
     }
-
-    hiringManager.name = name || hiringManager.name;
-    hiringManager.email = email || hiringManager.email;
+    if (name) hiringManager.name = name;
     await hiringManager.save();
 
-    res.json({ message: 'Hiring manager updated successfully', hiringManager });
+    const result = hiringManager.toObject();
+    delete result.password;
+    res.json({ message: 'Hiring manager updated successfully', hiringManager: result });
   } catch (error) {
     res.status(500).json({ error: 'Failed to update hiring manager' });
   }
@@ -230,10 +262,15 @@ exports.updateHiringManager = async (req, res) => {
 
 exports.deleteHiringManager = async (req, res) => {
   try {
-    const { companyId } = req.user;
+    const companyId = req.user.companyId || req.user._id;
     const { id } = req.params;
 
-    const hiringManager = await HiringManager.findOne({ _id: id, companyId, isActive: true });
+    const hiringManager = await CompanyUser.findOne({
+      _id: id,
+      companyId,
+      roles: 'hiring_manager',
+      isActive: true,
+    });
     if (!hiringManager) {
       return res.status(404).json({ error: 'Hiring manager not found' });
     }
@@ -254,7 +291,8 @@ exports.bulkCreateHiringManagers = async (req, res) => {
       return res.status(400).json({ errors: validationErrors.array() });
     }
 
-    const { companyId } = req.user;
+    const companyId = req.user.companyId || req.user._id;
+    const createdBy = req.user._id;
     const { items } = req.body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
@@ -266,22 +304,34 @@ exports.bulkCreateHiringManagers = async (req, res) => {
 
     for (const item of items) {
       try {
-        // Check if hiring manager already exists
-        const existingHM = await HiringManager.findOne({ email: item.email, companyId });
-        if (existingHM) {
-          bulkErrors.push({ item, error: 'Hiring manager with this email already exists' });
+        const email = (item.email || '').toLowerCase().trim();
+        const existingUser = await CompanyUser.findOne({ email });
+        if (existingUser) {
+          bulkErrors.push({ item, error: 'User with this email already exists' });
           continue;
         }
 
-        const hiringManager = new HiringManager({
+        const plainPassword = generatePassword();
+        const hashedPassword = await bcrypt.hash(plainPassword, await bcrypt.genSalt());
+
+        const hiringManager = await CompanyUser.create({
           name: item.name,
-          email: item.email,
+          email,
+          password: hashedPassword,
           companyId,
-          createdBy: req.user.id
+          roles: ['hiring_manager'],
+          createdBy,
         });
 
-        await hiringManager.save();
-        results.push(hiringManager);
+        try {
+          await sendHiringManagerWelcomeEmail(hiringManager.email, hiringManager.name, plainPassword);
+        } catch (err) {
+          console.error('Error sending welcome email:', err);
+        }
+
+        const result = hiringManager.toObject();
+        delete result.password;
+        results.push(result);
       } catch (error) {
         bulkErrors.push({ item, error: 'Failed to create hiring manager' });
       }
@@ -290,12 +340,211 @@ exports.bulkCreateHiringManagers = async (req, res) => {
     const summary = {
       total: items.length,
       successful: results.length,
-      failed: bulkErrors.length
+      failed: bulkErrors.length,
     };
 
-    res.status(201).json({ message: 'Bulk hiring manager creation completed', results, errors: bulkErrors, summary });
+    res.status(201).json({
+      message: 'Bulk hiring manager creation completed',
+      results,
+      errors: bulkErrors,
+      summary,
+    });
   } catch (error) {
     res.status(500).json({ error: 'Failed to create hiring managers in bulk' });
+  }
+};
+
+// ─── Interviewer Controllers (CompanyUser with role interviewer) ───────────────
+
+exports.getAllInterviewers = async (req, res) => {
+  try {
+    const companyId = req.user.companyId || req.user._id;
+    const interviewers = await CompanyUser.find({
+      companyId,
+      roles: 'interviewer',
+      isActive: true,
+    })
+      .select('-password')
+      .sort({ createdAt: -1 })
+      .lean();
+    res.json({ interviewers });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch interviewers' });
+  }
+};
+
+exports.createInterviewer = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const companyId = req.user.companyId || req.user._id;
+    const { name, email } = req.body;
+    const createdBy = req.user._id;
+
+    const existingUser = await CompanyUser.findOne({ email: email.toLowerCase().trim() });
+    if (existingUser) {
+      return res.status(400).json({ error: 'User with this email already exists' });
+    }
+
+    const plainPassword = generatePassword();
+    const hashedPassword = await bcrypt.hash(plainPassword, await bcrypt.genSalt());
+
+    const interviewer = await CompanyUser.create({
+      name,
+      email: email.toLowerCase().trim(),
+      password: hashedPassword,
+      companyId,
+      roles: ['interviewer'],
+      createdBy,
+    });
+
+    try {
+      await sendInterviewerWelcomeEmail(interviewer.email, interviewer.name, plainPassword);
+    } catch (err) {
+      console.error('Error sending interviewer welcome email:', err);
+    }
+
+    const result = interviewer.toObject();
+    delete result.password;
+    res.status(201).json({ message: 'Interviewer created successfully', interviewer: result });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to create interviewer' });
+  }
+};
+
+exports.updateInterviewer = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const companyId = req.user.companyId || req.user._id;
+    const { id } = req.params;
+    const { name, email } = req.body;
+
+    const interviewer = await CompanyUser.findOne({
+      _id: id,
+      companyId,
+      roles: 'interviewer',
+      isActive: true,
+    });
+    if (!interviewer) {
+      return res.status(404).json({ error: 'Interviewer not found' });
+    }
+
+    if (email && email !== interviewer.email) {
+      const existing = await CompanyUser.findOne({ email: email.toLowerCase().trim() });
+      if (existing) {
+        return res.status(400).json({ error: 'User with this email already exists' });
+      }
+      interviewer.email = email.toLowerCase().trim();
+    }
+    if (name) interviewer.name = name;
+    await interviewer.save();
+
+    const result = interviewer.toObject();
+    delete result.password;
+    res.json({ message: 'Interviewer updated successfully', interviewer: result });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update interviewer' });
+  }
+};
+
+exports.deleteInterviewer = async (req, res) => {
+  try {
+    const companyId = req.user.companyId || req.user._id;
+    const { id } = req.params;
+
+    const interviewer = await CompanyUser.findOne({
+      _id: id,
+      companyId,
+      roles: 'interviewer',
+      isActive: true,
+    });
+    if (!interviewer) {
+      return res.status(404).json({ error: 'Interviewer not found' });
+    }
+
+    interviewer.isActive = false;
+    await interviewer.save();
+
+    res.json({ message: 'Interviewer deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete interviewer' });
+  }
+};
+
+exports.bulkCreateInterviewers = async (req, res) => {
+  try {
+    const validationErrors = validationResult(req);
+    if (!validationErrors.isEmpty()) {
+      return res.status(400).json({ errors: validationErrors.array() });
+    }
+
+    const companyId = req.user.companyId || req.user._id;
+    const createdBy = req.user._id;
+    const { items } = req.body;
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'Invalid items array' });
+    }
+
+    const results = [];
+    const bulkErrors = [];
+
+    for (const item of items) {
+      try {
+        const email = (item.email || '').toLowerCase().trim();
+        const existingUser = await CompanyUser.findOne({ email });
+        if (existingUser) {
+          bulkErrors.push({ item, error: 'User with this email already exists' });
+          continue;
+        }
+
+        const plainPassword = generatePassword();
+        const hashedPassword = await bcrypt.hash(plainPassword, await bcrypt.genSalt());
+
+        const interviewer = await CompanyUser.create({
+          name: item.name,
+          email,
+          password: hashedPassword,
+          companyId,
+          roles: ['interviewer'],
+          createdBy,
+        });
+
+        try {
+          await sendInterviewerWelcomeEmail(interviewer.email, interviewer.name, plainPassword);
+        } catch (err) {
+          console.error('Error sending welcome email:', err);
+        }
+
+        const result = interviewer.toObject();
+        delete result.password;
+        results.push(result);
+      } catch (error) {
+        bulkErrors.push({ item, error: 'Failed to create interviewer' });
+      }
+    }
+
+    const summary = {
+      total: items.length,
+      successful: results.length,
+      failed: bulkErrors.length,
+    };
+
+    res.status(201).json({
+      message: 'Bulk interviewer creation completed',
+      results,
+      errors: bulkErrors,
+      summary,
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to create interviewers in bulk' });
   }
 };
 
@@ -303,10 +552,12 @@ exports.bulkCreateHiringManagers = async (req, res) => {
 
 exports.getAllBackupHiringManagers = async (req, res) => {
   try {
-    const { companyId } = req.user;
+    const companyId = req.user.companyId || req.user._id;
     const backupHiringManagers = await BackupHiringManager.find({ companyId, isActive: true })
+      .select('-password')
       .populate('hiringManagerId', 'name email')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
     res.json({ backupHiringManagers });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch backup hiring managers' });
@@ -320,35 +571,49 @@ exports.createBackupHiringManager = async (req, res) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { companyId } = req.user;
+    const companyId = req.user.companyId || req.user._id;
     const { name, email, hiringManagerId } = req.body;
+    const createdBy = req.user._id;
 
-    // Check if backup hiring manager already exists for this company
-    const existingBHM = await BackupHiringManager.findOne({ email, companyId });
+    const existingBHM = await BackupHiringManager.findOne({ email: email.toLowerCase().trim(), companyId, isActive: true });
     if (existingBHM) {
       return res.status(400).json({ error: 'Backup hiring manager with this email already exists' });
     }
 
-    // Validate hiring manager if provided
     if (hiringManagerId) {
-      const hm = await HiringManager.findOne({ _id: hiringManagerId, companyId, isActive: true });
+      const hm = await CompanyUser.findOne({ _id: hiringManagerId, companyId, roles: 'hiring_manager', isActive: true });
       if (!hm) {
-        return res.status(400).json({ error: 'Invalid hiring manager' });
+        const legacyHm = await HiringManager.findOne({ _id: hiringManagerId, companyId, isActive: true });
+        if (!legacyHm) {
+          return res.status(400).json({ error: 'Invalid hiring manager' });
+        }
       }
     }
 
+    const plainPassword = generatePassword();
+    const hashedPassword = await bcrypt.hash(plainPassword, await bcrypt.genSalt());
+
     const backupHiringManager = new BackupHiringManager({
       name,
-      email,
+      email: email.toLowerCase().trim(),
+      password: hashedPassword,
       hiringManagerId,
       companyId,
-      createdBy: req.user.id
+      createdBy,
     });
 
     await backupHiringManager.save();
     await backupHiringManager.populate('hiringManagerId', 'name email');
 
-    res.status(201).json({ message: 'Backup hiring manager created successfully', backupHiringManager });
+    try {
+      await sendBackupHiringManagerWelcomeEmail(backupHiringManager.email, backupHiringManager.name, plainPassword);
+    } catch (err) {
+      console.error('Error sending backup hiring manager welcome email:', err);
+    }
+
+    const result = backupHiringManager.toObject();
+    delete result.password;
+    res.status(201).json({ message: 'Backup hiring manager created successfully', backupHiringManager: result });
   } catch (error) {
     res.status(500).json({ error: 'Failed to create backup hiring manager' });
   }
@@ -361,7 +626,7 @@ exports.updateBackupHiringManager = async (req, res) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { companyId } = req.user;
+    const companyId = req.user.companyId || req.user._id;
     const { id } = req.params;
     const { name, email, hiringManagerId } = req.body;
 
@@ -370,29 +635,32 @@ exports.updateBackupHiringManager = async (req, res) => {
       return res.status(404).json({ error: 'Backup hiring manager not found' });
     }
 
-    // Check if email is being changed and if it already exists
-    if (email !== backupHiringManager.email) {
-      const existingBHM = await BackupHiringManager.findOne({ email, companyId, _id: { $ne: id } });
+    if (email && email !== backupHiringManager.email) {
+      const existingBHM = await BackupHiringManager.findOne({ email: email.toLowerCase().trim(), companyId, _id: { $ne: id }, isActive: true });
       if (existingBHM) {
         return res.status(400).json({ error: 'Backup hiring manager with this email already exists' });
       }
+      backupHiringManager.email = email.toLowerCase().trim();
     }
 
-    // Validate hiring manager if provided
     if (hiringManagerId) {
-      const hm = await HiringManager.findOne({ _id: hiringManagerId, companyId, isActive: true });
+      const hm = await CompanyUser.findOne({ _id: hiringManagerId, companyId, roles: 'hiring_manager', isActive: true });
       if (!hm) {
-        return res.status(400).json({ error: 'Invalid hiring manager' });
+        const legacyHm = await HiringManager.findOne({ _id: hiringManagerId, companyId, isActive: true });
+        if (!legacyHm) {
+          return res.status(400).json({ error: 'Invalid hiring manager' });
+        }
       }
+      backupHiringManager.hiringManagerId = hiringManagerId;
     }
 
-    backupHiringManager.name = name || backupHiringManager.name;
-    backupHiringManager.email = email || backupHiringManager.email;
-    backupHiringManager.hiringManagerId = hiringManagerId || backupHiringManager.hiringManagerId;
+    if (name) backupHiringManager.name = name;
     await backupHiringManager.save();
     await backupHiringManager.populate('hiringManagerId', 'name email');
 
-    res.json({ message: 'Backup hiring manager updated successfully', backupHiringManager });
+    const result = backupHiringManager.toObject();
+    delete result.password;
+    res.json({ message: 'Backup hiring manager updated successfully', backupHiringManager: result });
   } catch (error) {
     res.status(500).json({ error: 'Failed to update backup hiring manager' });
   }
@@ -400,7 +668,7 @@ exports.updateBackupHiringManager = async (req, res) => {
 
 exports.deleteBackupHiringManager = async (req, res) => {
   try {
-    const { companyId } = req.user;
+    const companyId = req.user.companyId || req.user._id;
     const { id } = req.params;
 
     const backupHiringManager = await BackupHiringManager.findOne({ _id: id, companyId, isActive: true });
@@ -417,13 +685,19 @@ exports.deleteBackupHiringManager = async (req, res) => {
   }
 };
 
-// ─── Recruiter Controllers ───────────────────────────────────────────────────────
+// ─── Recruiter Controllers (CompanyUser with role recruiter) ─────────────────────
 
 exports.getAllRecruiters = async (req, res) => {
   try {
-    const { companyId } = req.user;
-    const recruiters = await Recruiter.find({ companyId, isActive: true })
-      .sort({ createdAt: -1 });
+    const companyId = req.user.companyId || req.user._id;
+    const recruiters = await CompanyUser.find({
+      companyId,
+      roles: 'recruiter',
+      isActive: true,
+    })
+      .select('-password')
+      .sort({ createdAt: -1 })
+      .lean();
     res.json({ recruiters });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch recruiters' });
@@ -437,36 +711,43 @@ exports.createRecruiter = async (req, res) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { companyId } = req.user;
+    const companyId = req.user.companyId || req.user._id;
     const { name, email, keySkills } = req.body;
+    const createdBy = req.user._id;
 
-    // Check if recruiter already exists for this company
-    const existingRecruiter = await Recruiter.findOne({ email, companyId });
-    if (existingRecruiter) {
-      // If recruiter exists but is not invited yet, send invitation
-      if (!existingRecruiter.isInvited) {
-        existingRecruiter.isInvited = true;
-        await existingRecruiter.save();
-        return res.status(200).json({ 
-          message: 'Invitation sent to existing recruiter', 
-          isExistingRecruiter: true,
-          recruiter: existingRecruiter 
-        });
-      }
-      return res.status(400).json({ error: 'Recruiter with this email already exists' });
+    const existingUser = await CompanyUser.findOne({ email: email.toLowerCase().trim() });
+    if (existingUser) {
+      return res.status(400).json({ error: 'User with this email already exists' });
     }
 
-    const recruiter = new Recruiter({
+    const plainPassword = generatePassword();
+    const hashedPassword = await bcrypt.hash(plainPassword, await bcrypt.genSalt());
+
+    const keySkillsArr = Array.isArray(keySkills)
+      ? keySkills
+      : typeof keySkills === 'string'
+        ? keySkills.split(',').map((s) => s.trim()).filter(Boolean)
+        : [];
+
+    const recruiter = await CompanyUser.create({
       name,
-      email,
-      keySkills: keySkills || [],
+      email: email.toLowerCase().trim(),
+      password: hashedPassword,
       companyId,
-      isInvited: true,
-      createdBy: req.user.id
+      roles: ['recruiter'],
+      keySkills: keySkillsArr,
+      createdBy,
     });
 
-    await recruiter.save();
-    res.status(201).json({ message: 'Recruiter created successfully', recruiter });
+    try {
+      await sendRecruiterWelcomeEmail(recruiter.email, recruiter.name, plainPassword);
+    } catch (err) {
+      console.error('Error sending recruiter welcome email:', err);
+    }
+
+    const result = recruiter.toObject();
+    delete result.password;
+    res.status(201).json({ message: 'Recruiter created successfully', recruiter: result });
   } catch (error) {
     res.status(500).json({ error: 'Failed to create recruiter' });
   }
@@ -479,29 +760,40 @@ exports.updateRecruiter = async (req, res) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { companyId } = req.user;
+    const companyId = req.user.companyId || req.user._id;
     const { id } = req.params;
     const { name, email, keySkills } = req.body;
 
-    const recruiter = await Recruiter.findOne({ _id: id, companyId, isActive: true });
+    const recruiter = await CompanyUser.findOne({
+      _id: id,
+      companyId,
+      roles: 'recruiter',
+      isActive: true,
+    });
     if (!recruiter) {
       return res.status(404).json({ error: 'Recruiter not found' });
     }
 
-    // Check if email is being changed and if it already exists
-    if (email !== recruiter.email) {
-      const existingRecruiter = await Recruiter.findOne({ email, companyId, _id: { $ne: id } });
-      if (existingRecruiter) {
-        return res.status(400).json({ error: 'Recruiter with this email already exists' });
+    if (email && email !== recruiter.email) {
+      const existing = await CompanyUser.findOne({ email: email.toLowerCase().trim() });
+      if (existing) {
+        return res.status(400).json({ error: 'User with this email already exists' });
       }
+      recruiter.email = email.toLowerCase().trim();
     }
-
-    recruiter.name = name || recruiter.name;
-    recruiter.email = email || recruiter.email;
-    recruiter.keySkills = keySkills || recruiter.keySkills;
+    if (name) recruiter.name = name;
+    if (keySkills !== undefined) {
+      recruiter.keySkills = Array.isArray(keySkills)
+        ? keySkills
+        : typeof keySkills === 'string'
+          ? keySkills.split(',').map((s) => s.trim()).filter(Boolean)
+          : recruiter.keySkills;
+    }
     await recruiter.save();
 
-    res.json({ message: 'Recruiter updated successfully', recruiter });
+    const result = recruiter.toObject();
+    delete result.password;
+    res.json({ message: 'Recruiter updated successfully', recruiter: result });
   } catch (error) {
     res.status(500).json({ error: 'Failed to update recruiter' });
   }
@@ -509,10 +801,15 @@ exports.updateRecruiter = async (req, res) => {
 
 exports.deleteRecruiter = async (req, res) => {
   try {
-    const { companyId } = req.user;
+    const companyId = req.user.companyId || req.user._id;
     const { id } = req.params;
 
-    const recruiter = await Recruiter.findOne({ _id: id, companyId, isActive: true });
+    const recruiter = await CompanyUser.findOne({
+      _id: id,
+      companyId,
+      roles: 'recruiter',
+      isActive: true,
+    });
     if (!recruiter) {
       return res.status(404).json({ error: 'Recruiter not found' });
     }
@@ -533,7 +830,8 @@ exports.bulkCreateRecruiters = async (req, res) => {
       return res.status(400).json({ errors: validationErrors.array() });
     }
 
-    const { companyId } = req.user;
+    const companyId = req.user.companyId || req.user._id;
+    const createdBy = req.user._id;
     const { items } = req.body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
@@ -545,24 +843,41 @@ exports.bulkCreateRecruiters = async (req, res) => {
 
     for (const item of items) {
       try {
-        // Check if recruiter already exists
-        const existingRecruiter = await Recruiter.findOne({ email: item.email, companyId });
-        if (existingRecruiter) {
-          bulkErrors.push({ item, error: 'Recruiter with this email already exists' });
+        const email = (item.email || '').toLowerCase().trim();
+        const existingUser = await CompanyUser.findOne({ email });
+        if (existingUser) {
+          bulkErrors.push({ item, error: 'User with this email already exists' });
           continue;
         }
 
-        const recruiter = new Recruiter({
+        const plainPassword = generatePassword();
+        const hashedPassword = await bcrypt.hash(plainPassword, await bcrypt.genSalt());
+
+        const keySkillsArr = item.keySkills
+          ? (typeof item.keySkills === 'string'
+            ? item.keySkills.split(',').map((s) => s.trim()).filter(Boolean)
+            : Array.isArray(item.keySkills) ? item.keySkills : [])
+          : [];
+
+        const recruiter = await CompanyUser.create({
           name: item.name,
-          email: item.email,
-          keySkills: item.keySkills ? item.keySkills.split(',').map(skill => skill.trim()).filter(skill => skill) : [],
+          email,
+          password: hashedPassword,
           companyId,
-          isInvited: true,
-          createdBy: req.user.id
+          roles: ['recruiter'],
+          keySkills: keySkillsArr,
+          createdBy,
         });
 
-        await recruiter.save();
-        results.push(recruiter);
+        try {
+          await sendRecruiterWelcomeEmail(recruiter.email, recruiter.name, plainPassword);
+        } catch (err) {
+          console.error('Error sending welcome email:', err);
+        }
+
+        const result = recruiter.toObject();
+        delete result.password;
+        results.push(result);
       } catch (error) {
         bulkErrors.push({ item, error: 'Failed to create recruiter' });
       }
@@ -571,10 +886,15 @@ exports.bulkCreateRecruiters = async (req, res) => {
     const summary = {
       total: items.length,
       successful: results.length,
-      failed: bulkErrors.length
+      failed: bulkErrors.length,
     };
 
-    res.status(201).json({ message: 'Bulk recruiter creation completed', results, errors: bulkErrors, summary });
+    res.status(201).json({
+      message: 'Bulk recruiter creation completed',
+      results,
+      errors: bulkErrors,
+      summary,
+    });
   } catch (error) {
     res.status(500).json({ error: 'Failed to create recruiters in bulk' });
   }

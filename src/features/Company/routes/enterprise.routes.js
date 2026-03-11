@@ -1,13 +1,13 @@
 const express = require('express');
 const { body } = require('express-validator');
-const { authenticate, requireRole } = require('../../../shared/middleware/auth.middleware');
+const { requireCompanyAuth, requireCompanyAdmin } = require('../../../shared/middleware/companyAuth.middleware');
 const enterpriseController = require('../controllers/enterprise.controller');
 
 const router = express.Router();
 
-// Apply authentication middleware to all routes
-router.use(authenticate);
-router.use(requireRole('company'));
+// Enterprise routes require company admin (client admin)
+router.use(requireCompanyAuth);
+router.use(requireCompanyAdmin);
 
 // ─── LOB Routes ────────────────────────────────────────────────────────────────
 
@@ -49,6 +49,25 @@ router.put('/hiring-managers/:id', hiringManagerValidation, enterpriseController
 router.delete('/hiring-managers/:id', enterpriseController.deleteHiringManager);
 router.post('/hiring-managers/bulk', bulkHiringManagerValidation, enterpriseController.bulkCreateHiringManagers);
 
+// ─── Interviewer Routes ────────────────────────────────────────────────────────
+
+const interviewerValidation = [
+  body('name').trim().isLength({ min: 3, max: 100 }).withMessage('Name must be between 3 and 100 characters'),
+  body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
+];
+
+const bulkInterviewerValidation = [
+  body('items').isArray({ min: 1 }).withMessage('Items must be a non-empty array'),
+  body('items.*.name').trim().isLength({ min: 3, max: 100 }).withMessage('Name must be between 3 and 100 characters'),
+  body('items.*.email').isEmail().normalizeEmail().withMessage('Valid email is required'),
+];
+
+router.get('/interviewers', enterpriseController.getAllInterviewers);
+router.post('/interviewers', interviewerValidation, enterpriseController.createInterviewer);
+router.put('/interviewers/:id', interviewerValidation, enterpriseController.updateInterviewer);
+router.delete('/interviewers/:id', enterpriseController.deleteInterviewer);
+router.post('/interviewers/bulk', bulkInterviewerValidation, enterpriseController.bulkCreateInterviewers);
+
 // ─── Backup Hiring Manager Routes ───────────────────────────────────────────────
 
 // Validation rules for Backup Hiring Manager
@@ -69,7 +88,10 @@ router.delete('/backup-hiring-managers/:id', enterpriseController.deleteBackupHi
 const recruiterValidation = [
   body('name').trim().isLength({ min: 3, max: 100 }).withMessage('Name must be between 3 and 100 characters'),
   body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
-  body('keySkills').optional().isArray().withMessage('Key skills must be an array')
+  body('keySkills').optional().custom((val) => {
+    if (val === undefined || val === null || val === '') return true;
+    return Array.isArray(val) || typeof val === 'string';
+  }).withMessage('Key skills can be array or comma-separated string')
 ];
 
 const bulkRecruiterValidation = [

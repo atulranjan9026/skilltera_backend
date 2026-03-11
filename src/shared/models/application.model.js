@@ -58,6 +58,15 @@ const applicationSchema = new mongoose.Schema(
         ],
         withdrawnAt: Date,
         withdrawnReason: String,
+        referralSource: {
+            type: String,
+            enum: ['self', 'recruiter'],
+            default: 'self',
+        },
+        referredBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'CompanyUser',
+        },
     },
     {
         timestamps: true,

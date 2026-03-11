@@ -4,6 +4,19 @@ const Skill = require('../../candidates/models/skill.model');
 const { validationResult } = require('express-validator');
 
 /**
+ * Resolve company ID from authenticated user (CompanyUser or legacy Company/HM/Interviewer).
+ */
+function getCompanyIdFromUser(user) {
+    if (!user) return null;
+    const cid = user.companyId;
+    if (cid) return cid._id || cid;
+    if (user.constructor?.modelName === 'Company' || user.constructor?.modelName === 'Companies') {
+        return user._id;
+    }
+    return null;
+}
+
+/**
  * Job Controller
  * Handles all job-related operations for companies
  */
@@ -65,12 +78,15 @@ const createJob = async (req, res) => {
             });
         }
 
-        // Debug logging
-        console.log('User from auth middleware:', req.user);
-        console.log('User role:', req.userRole);
-
-        // Get company information from authenticated user
-        const company = await Company.findById(req.user._id);
+        // Get company information from authenticated user (CompanyUser or legacy Company)
+        const companyId = getCompanyIdFromUser(req.user);
+        if (!companyId) {
+            return res.status(403).json({
+                success: false,
+                message: 'Company context required'
+            });
+        }
+        const company = await Company.findById(companyId);
         if (!company) {
             return res.status(404).json({
                 success: false,
@@ -151,11 +167,14 @@ const createJob = async (req, res) => {
 const getCompanyJobs = async (req, res) => {
     try {
         const { companyId } = req.params;
-        
-        // Debug logging
-        console.log('Fetching jobs for companyId:', companyId);
-        console.log('Authenticated user:', req.user._id);
-        
+        const authorizedCompanyId = getCompanyIdFromUser(req.user);
+        if (!authorizedCompanyId || companyId !== authorizedCompanyId.toString()) {
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied to this company'
+            });
+        }
+
         const company = await Company.findById(companyId);
         if (!company) {
             return res.status(404).json({
@@ -171,8 +190,6 @@ const getCompanyJobs = async (req, res) => {
         const filter = { companyId: companyId };
         if (status) filter.status = status;
         if (jobType) filter.jobType = jobType;
-
-        console.log('Job filter:', filter);
 
         const jobs = await Job.find(filter)
             .sort({ postedDate: -1 })
@@ -207,17 +224,13 @@ const getCompanyJobs = async (req, res) => {
 // Get a specific job by ID
 const getJobById = async (req, res) => {
     try {
-        const { id } = req.params;
-        const company = await Company.findById(req.user._id);
-
-        if (!company) {
-            return res.status(404).json({
-                success: false,
-                message: 'Company not found'
-            });
+        const { companyId: paramCompanyId, id } = req.params;
+        const companyId = getCompanyIdFromUser(req.user);
+        if (!companyId || paramCompanyId !== companyId.toString()) {
+            return res.status(403).json({ success: false, message: 'Access denied to this company' });
         }
 
-        const job = await Job.findOne({ _id: id, companyId: company._id })
+        const job = await Job.findOne({ _id: id, companyId })
             .populate('requiredSkills.skillId', 'name')
             .populate('optionalSkills.skillId', 'name');
 
@@ -253,17 +266,13 @@ const updateJob = async (req, res) => {
             });
         }
 
-        const { id } = req.params;
-        const company = await Company.findById(req.user._id);
-
-        if (!company) {
-            return res.status(404).json({
-                success: false,
-                message: 'Company not found'
-            });
+        const { companyId: paramCompanyId, id } = req.params;
+        const companyId = getCompanyIdFromUser(req.user);
+        if (!companyId || paramCompanyId !== companyId.toString()) {
+            return res.status(403).json({ success: false, message: 'Access denied to this company' });
         }
 
-        const job = await Job.findOne({ _id: id, companyId: company._id });
+        const job = await Job.findOne({ _id: id, companyId });
 
         if (!job) {
             return res.status(404).json({
@@ -295,17 +304,13 @@ const updateJob = async (req, res) => {
 // Delete a job
 const deleteJob = async (req, res) => {
     try {
-        const { id } = req.params;
-        const company = await Company.findById(req.user._id);
-
-        if (!company) {
-            return res.status(404).json({
-                success: false,
-                message: 'Company not found'
-            });
+        const { companyId: paramCompanyId, id } = req.params;
+        const companyId = getCompanyIdFromUser(req.user);
+        if (!companyId || paramCompanyId !== companyId.toString()) {
+            return res.status(403).json({ success: false, message: 'Access denied to this company' });
         }
 
-        const job = await Job.findOne({ _id: id, companyId: company._id });
+        const job = await Job.findOne({ _id: id, companyId });
 
         if (!job) {
             return res.status(404).json({
@@ -332,17 +337,13 @@ const deleteJob = async (req, res) => {
 // Toggle job status (active/inactive)
 const toggleJobStatus = async (req, res) => {
     try {
-        const { id } = req.params;
-        const company = await Company.findById(req.user._id);
-
-        if (!company) {
-            return res.status(404).json({
-                success: false,
-                message: 'Company not found'
-            });
+        const { companyId: paramCompanyId, id } = req.params;
+        const companyId = getCompanyIdFromUser(req.user);
+        if (!companyId || paramCompanyId !== companyId.toString()) {
+            return res.status(403).json({ success: false, message: 'Access denied to this company' });
         }
 
-        const job = await Job.findOne({ _id: id, companyId: company._id });
+        const job = await Job.findOne({ _id: id, companyId });
 
         if (!job) {
             return res.status(404).json({
@@ -372,7 +373,11 @@ const toggleJobStatus = async (req, res) => {
 // Get job statistics for company dashboard
 const getJobStats = async (req, res) => {
     try {
-        const company = await Company.findById(req.user._id);
+        const companyId = getCompanyIdFromUser(req.user);
+        if (!companyId) {
+            return res.status(403).json({ success: false, message: 'Company context required' });
+        }
+        const company = await Company.findById(companyId);
 
         if (!company) {
             return res.status(404).json({

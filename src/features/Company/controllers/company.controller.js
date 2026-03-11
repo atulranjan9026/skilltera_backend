@@ -8,11 +8,28 @@ const HTTP_STATUS = require('../../../shared/constants/httpStatus');
 const { ERROR_MESSAGES, SUCCESS_MESSAGES } = require('../../../shared/constants');
 
 const Company = require('../../../shared/models/company.model');
+const CompanyUser = require('../models/companyUser.model');
 const HiringManager = require('../../../shared/models/hiringManager.model');
 const Interviewer = require('../../../shared/models/interviewer.model');
 const Job = require('../../../shared/models/job.model');
 const Candidate = require('../../candidates/models/candidate.model');
 const { ObjectId } = require('mongodb');
+
+/**
+ * Resolve the company ID the authenticated user is authorized to access.
+ * Returns null for candidates or users without company context.
+ */
+function getAuthorizedCompanyId(req) {
+    const user = req.user;
+    if (!user) return null;
+    const cid = user.companyId;
+    if (cid) return (cid._id || cid).toString();
+    if (user.constructor?.modelName === 'Company' || user.constructor?.modelName === 'Companies') {
+        return user._id?.toString() || null;
+    }
+    return null;
+}
+
 /**
  * Company Signup
  * @route   POST /api/v1/company/auth/signup
@@ -58,7 +75,8 @@ exports.companySignup = asyncHandler(async (req, res) => {
 
 /**
  * Unified Company Login
- * Supports: Company Admin, Hiring Manager, and Interviewer roles.
+ * Supports: CompanyUser (unified schema) first, then fallback to legacy
+ * Company Admin, Hiring Manager, and Interviewer models.
  * @route   POST /api/v1/company/auth/login
  * @access  Public
  */
@@ -71,27 +89,63 @@ exports.companyLogin = asyncHandler(async (req, res) => {
 
     email = email.toLowerCase().trim();
 
-    const company = await Company.findOne({ companyName });
+    // Try exact match first, then case-insensitive (company names may vary in casing)
+    let company = await Company.findOne({ companyName });
     if (!company) {
-        throw ApiError.unauthorized('Company not found. Please check your company name.');
+        company = await Company.findOne({
+            companyName: new RegExp(`^${companyName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'),
+        });
+    }
+    if (!company) {
+        throw ApiError.unauthorized(ERROR_MESSAGES.INVALID_CREDENTIALS);
     }
     const companyId = company._id;
 
     let user = null;
     let role = null;
     let userData = null;
+    let useCompanyUser = false;
 
-    // 1. Try Company Admin login
-    try {
-        const companyUser = await Company.login(companyName, email, password);
-        if (companyUser && companyUser._id.toString() === companyId.toString()) {
+    // 1. Try CompanyUser (unified schema) first
+    const companyUser = await CompanyUser.findOne({
+        email,
+        companyId,
+        isActive: true,
+    });
+    if (companyUser) {
+        const auth = await bcrypt.compare(password, companyUser.password);
+        if (auth) {
             user = companyUser;
-            role = 'company';
-            userData = await Company.findById(companyUser._id).select('-password');
+            useCompanyUser = true;
+            userData = await CompanyUser.findById(companyUser._id)
+                .select('-password')
+                .populate({ path: 'companyId', select: 'companyName email' })
+                .lean();
+            if (userData && userData.companyId) {
+                userData.companyName = userData.companyId.companyName;
+                userData.companyId = userData.companyId._id;
+            }
+            await CompanyUser.updateOne(
+                { _id: companyUser._id },
+                { $set: { lastLoginAt: new Date() } }
+            );
         }
-    } catch (_) { /* Fall through */ }
+    }
 
-    // 2. Try Hiring Manager login
+    // 2. Fallback: Try Company Admin login (legacy)
+    if (!user) {
+        try {
+            const companyAdmin = await Company.login(companyName, email, password);
+            if (companyAdmin && companyAdmin._id.toString() === companyId.toString()) {
+                user = companyAdmin;
+                role = 'company';
+                userData = await Company.findById(companyAdmin._id).select('-password').lean();
+                userData.companyName = company.companyName;
+            }
+        } catch (_) { /* Fall through */ }
+    }
+
+    // 3. Fallback: Try Hiring Manager login (legacy)
     if (!user) {
         try {
             const hiringManager = await HiringManager.login(email, password);
@@ -100,12 +154,17 @@ exports.companyLogin = asyncHandler(async (req, res) => {
                 role = 'hiring_manager';
                 userData = await HiringManager.findById(hiringManager._id)
                     .select('-password')
-                    .populate({ path: 'companyId', select: 'companyName email' });
+                    .populate({ path: 'companyId', select: 'companyName email' })
+                    .lean();
+                if (userData && userData.companyId) {
+                    userData.companyName = userData.companyId.companyName;
+                    userData.companyId = userData.companyId._id;
+                }
             }
         } catch (_) { /* Fall through */ }
     }
 
-    // 3. Try Interviewer login
+    // 4. Fallback: Try Interviewer login (legacy)
     if (!user) {
         try {
             const interviewer = await Interviewer.login(email, password);
@@ -119,22 +178,52 @@ exports.companyLogin = asyncHandler(async (req, res) => {
                 role = 'interviewer';
                 userData = await Interviewer.findById(interviewer._id)
                     .select('-password')
-                    .populate({ path: 'companyId', select: 'companyName email' });
+                    .populate({ path: 'companyId', select: 'companyName email' })
+                    .lean();
+                if (userData && userData.companyId) {
+                    userData.companyName = userData.companyId.companyName;
+                    userData.companyId = userData.companyId._id;
+                }
             }
         } catch (_) { /* All models exhausted */ }
     }
 
-    if (!user || !role) {
+    if (!user || !userData) {
         throw ApiError.unauthorized(ERROR_MESSAGES.INVALID_CREDENTIALS);
     }
 
-    const tokenPayload = { userId: user._id, email: userData.email, role };
+    let tokenPayload;
+    let responseUser;
+
+    if (useCompanyUser) {
+        const primaryRole = user.roles?.includes('company_admin')
+            ? 'company'
+            : user.roles?.[0] || 'company';
+        tokenPayload = {
+            userId: user._id,
+            email: userData.email,
+            companyId: user.companyId.toString(),
+            role: primaryRole,
+            roles: user.roles || [],
+            isCompanyUser: true,
+        };
+        responseUser = {
+            ...userData,
+            _id: user._id,
+            role: primaryRole,
+            roles: user.roles,
+        };
+    } else {
+        tokenPayload = { userId: user._id, email: userData.email, role };
+        responseUser = { ...userData, role };
+    }
+
     const accessToken = TokenManager.generateAccessToken(tokenPayload);
     const refreshToken = TokenManager.generateRefreshToken({ userId: user._id });
 
     return new ApiResponse(
         HTTP_STATUS.OK,
-        { accessToken, refreshToken, user: { ...userData.toObject(), role } },
+        { accessToken, refreshToken, user: responseUser },
         SUCCESS_MESSAGES.LOGIN_SUCCESS
     ).send(res);
 });
@@ -147,6 +236,11 @@ exports.companyLogin = asyncHandler(async (req, res) => {
 exports.getCompanyJobs = asyncHandler(async (req, res) => {
     const { companyId } = req.params;
     const { status, active } = req.query;
+
+    const authorizedCompanyId = getAuthorizedCompanyId(req);
+    if (!authorizedCompanyId || companyId !== authorizedCompanyId) {
+        throw ApiError.forbidden('Access denied to this company');
+    }
 
     const page  = parseInt(req.query.page,  10) || 1;
     const limit = parseInt(req.query.limit, 10) || 10;
@@ -222,6 +316,11 @@ exports.getCompanyJobs = asyncHandler(async (req, res) => {
 exports.getCompanyApplications = asyncHandler(async (req, res) => {
     const { companyId } = req.params;
     const { status, jobId } = req.query;
+
+    const authorizedCompanyId = getAuthorizedCompanyId(req);
+    if (!authorizedCompanyId || companyId !== authorizedCompanyId) {
+        throw ApiError.forbidden('Access denied to this company');
+    }
 
     const page  = parseInt(req.query.page,  10) || 1;
     const limit = parseInt(req.query.limit, 10) || 10;
@@ -317,4 +416,100 @@ exports.getCompanyApplications = asyncHandler(async (req, res) => {
             hasPrevPage: page > 1,
         }
     }, 'Company applications retrieved successfully').send(res);
+});
+
+/**
+ * Update Application Status
+ * @route   PUT /api/v1/company/:companyId/applications/:applicationId
+ * @access  Private (Company Admin/Hiring Manager)
+ */
+exports.updateApplicationStatus = asyncHandler(async (req, res) => {
+    const { companyId, applicationId } = req.params;
+    const { status } = req.body;
+
+    const authorizedCompanyId = getAuthorizedCompanyId(req);
+    if (!authorizedCompanyId || companyId !== authorizedCompanyId) {
+        throw ApiError.forbidden('Access denied to this company');
+    }
+
+    const validStatuses = ['applied', 'shortlisted', 'interviewed', 'selected', 'rejected', 'withdrawn'];
+    if (!status || !validStatuses.includes(status)) {
+        throw ApiError.badRequest('Invalid status. Must be one of: ' + validStatuses.join(', '));
+    }
+
+    const companyJobs = await mongoose.connection.db.collection('jobs')
+        .find({
+            $or: [
+                { companyId },
+                { companyId: new ObjectId(companyId) },
+            ],
+        })
+        .project({ _id: 1 })
+        .toArray();
+
+    const jobIds = companyJobs.map((j) => j._id);
+    if (jobIds.length === 0) {
+        throw ApiError.notFound('Application not found');
+    }
+
+    const result = await mongoose.connection.db.collection('applications').findOneAndUpdate(
+        {
+            _id: new ObjectId(applicationId),
+            job: { $in: jobIds },
+        },
+        { $set: { status, updatedAt: new Date() } },
+        { returnDocument: 'after' }
+    );
+
+    if (!result) {
+        throw ApiError.notFound('Application not found');
+    }
+
+    return new ApiResponse(
+        HTTP_STATUS.OK,
+        { application: result },
+        'Application status updated successfully'
+    ).send(res);
+});
+
+/**
+ * Get jobs a recruiter can refer candidates to (assigned jobs or all company jobs for admins)
+ * @route   GET /api/v1/company/jobs/assigned
+ * @access  Private (recruiter, company_admin, hiring_manager)
+ */
+exports.getRecruiterAssignedJobs = asyncHandler(async (req, res) => {
+    const user = req.user;
+    const companyId = getAuthorizedCompanyId(req);
+    if (!companyId) {
+        throw ApiError.forbidden('Company context required');
+    }
+
+    const roles = user?.roles || [];
+    const role = user?.role;
+    const isAdmin = roles.includes('company_admin') || role === 'company';
+    const isHiringManager = roles.includes('hiring_manager');
+    const assignedJobIds = user?.assignedJobIds || [];
+
+    let jobFilter = {
+        $or: [{ companyId: companyId }, { companyId: new ObjectId(companyId) }],
+        isActive: true,
+    };
+    if (!isAdmin && !isHiringManager) {
+        if (assignedJobIds.length === 0) {
+            return new ApiResponse(HTTP_STATUS.OK, { jobs: [] }, 'No jobs assigned').send(res);
+        }
+        const ids = assignedJobIds.map((id) => (id._id || id));
+        jobFilter._id = { $in: ids };
+    }
+
+    const jobs = await Job.find(jobFilter)
+        .select('_id title companyId companyName jobType location applicationDeadline')
+        .sort({ postedDate: -1 })
+        .lean();
+
+    return new ApiResponse(
+        HTTP_STATUS.OK,
+        { jobs },
+        'Assigned jobs retrieved successfully'
+    ).send(res);
 });

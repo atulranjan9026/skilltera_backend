@@ -14,14 +14,18 @@ const backupHiringManagerSchema = new mongoose.Schema({
     lowercase: true,
     maxlength: 255
   },
+  password: {
+    type: String,
+    required: true
+  },
   companyId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Company',
+    ref: 'Companies',
     required: true
   },
   hiringManagerId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'HiringManager'
+    ref: 'CompanyUser'
   },
   isActive: {
     type: Boolean,
@@ -29,7 +33,7 @@ const backupHiringManagerSchema = new mongoose.Schema({
   },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
+    ref: 'CompanyUser'
   }
 }, {
   timestamps: true
