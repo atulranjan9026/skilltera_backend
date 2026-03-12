@@ -8,7 +8,7 @@ const { validationResult } = require('express-validator');
 
 exports.getAllLOBs = async (req, res) => {
   try {
-    const { companyId } = req.user;
+    const companyId = req.userId;
     const lobs = await LOB.find({ companyId, isActive: true }).sort({ createdAt: -1 });
     res.json({ lobs });
   } catch (error) {
@@ -23,7 +23,7 @@ exports.createLOB = async (req, res) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { companyId } = req.user;
+    const companyId = req.userId;
     const { name, description } = req.body;
 
     // Check if LOB already exists for this company
@@ -36,7 +36,7 @@ exports.createLOB = async (req, res) => {
       name,
       description,
       companyId,
-      createdBy: req.user.id
+      createdBy: req.userId
     });
 
     await lob.save();
@@ -53,7 +53,7 @@ exports.updateLOB = async (req, res) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { companyId } = req.user;
+    const companyId = req.userId;
     const { id } = req.params;
     const { name, description } = req.body;
 
@@ -82,7 +82,7 @@ exports.updateLOB = async (req, res) => {
 
 exports.deleteLOB = async (req, res) => {
   try {
-    const { companyId } = req.user;
+    const companyId = req.userId;
     const { id } = req.params;
 
     const lob = await LOB.findOne({ _id: id, companyId, isActive: true });
@@ -106,7 +106,7 @@ exports.bulkCreateLOBs = async (req, res) => {
       return res.status(400).json({ errors: validationErrors.array() });
     }
 
-    const { companyId } = req.user;
+    const companyId = req.userId;
     const { items } = req.body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
@@ -129,7 +129,7 @@ exports.bulkCreateLOBs = async (req, res) => {
           name: item.name,
           description: item.description,
           companyId,
-          createdBy: req.user.id
+          createdBy: req.userId
         });
 
         await lob.save();
@@ -155,7 +155,7 @@ exports.bulkCreateLOBs = async (req, res) => {
 
 exports.getAllHiringManagers = async (req, res) => {
   try {
-    const { companyId } = req.user;
+    const companyId = req.userId;
     const hiringManagers = await HiringManager.find({ companyId, isActive: true })
       .sort({ createdAt: -1 });
     res.json({ hiringManagers });
@@ -171,7 +171,7 @@ exports.createHiringManager = async (req, res) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { companyId } = req.user;
+    const companyId = req.userId;
     const { name, email } = req.body;
 
     // Check if hiring manager already exists for this company
@@ -184,7 +184,7 @@ exports.createHiringManager = async (req, res) => {
       name,
       email,
       companyId,
-      createdBy: req.user.id
+      createdBy: req.userId
     });
 
     await hiringManager.save();
@@ -201,7 +201,7 @@ exports.updateHiringManager = async (req, res) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { companyId } = req.user;
+    const companyId = req.userId;
     const { id } = req.params;
     const { name, email } = req.body;
 
@@ -230,7 +230,7 @@ exports.updateHiringManager = async (req, res) => {
 
 exports.deleteHiringManager = async (req, res) => {
   try {
-    const { companyId } = req.user;
+    const companyId = req.userId;
     const { id } = req.params;
 
     const hiringManager = await HiringManager.findOne({ _id: id, companyId, isActive: true });
@@ -254,7 +254,7 @@ exports.bulkCreateHiringManagers = async (req, res) => {
       return res.status(400).json({ errors: validationErrors.array() });
     }
 
-    const { companyId } = req.user;
+    const companyId = req.userId;
     const { items } = req.body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
@@ -277,7 +277,7 @@ exports.bulkCreateHiringManagers = async (req, res) => {
           name: item.name,
           email: item.email,
           companyId,
-          createdBy: req.user.id
+          createdBy: req.userId
         });
 
         await hiringManager.save();
@@ -303,7 +303,7 @@ exports.bulkCreateHiringManagers = async (req, res) => {
 
 exports.getAllBackupHiringManagers = async (req, res) => {
   try {
-    const { companyId } = req.user;
+    const companyId = req.userId;
     const backupHiringManagers = await BackupHiringManager.find({ companyId, isActive: true })
       .populate('hiringManagerId', 'name email')
       .sort({ createdAt: -1 });
@@ -320,7 +320,7 @@ exports.createBackupHiringManager = async (req, res) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { companyId } = req.user;
+    const companyId = req.userId;
     const { name, email, hiringManagerId } = req.body;
 
     // Check if backup hiring manager already exists for this company
@@ -340,9 +340,9 @@ exports.createBackupHiringManager = async (req, res) => {
     const backupHiringManager = new BackupHiringManager({
       name,
       email,
-      hiringManagerId,
+      hiringManagerId: hiringManagerId || null,
       companyId,
-      createdBy: req.user.id
+      createdBy: req.userId
     });
 
     await backupHiringManager.save();
@@ -361,7 +361,7 @@ exports.updateBackupHiringManager = async (req, res) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { companyId } = req.user;
+    const companyId = req.userId;
     const { id } = req.params;
     const { name, email, hiringManagerId } = req.body;
 
@@ -400,7 +400,7 @@ exports.updateBackupHiringManager = async (req, res) => {
 
 exports.deleteBackupHiringManager = async (req, res) => {
   try {
-    const { companyId } = req.user;
+    const companyId = req.userId;
     const { id } = req.params;
 
     const backupHiringManager = await BackupHiringManager.findOne({ _id: id, companyId, isActive: true });
@@ -421,7 +421,7 @@ exports.deleteBackupHiringManager = async (req, res) => {
 
 exports.getAllRecruiters = async (req, res) => {
   try {
-    const { companyId } = req.user;
+    const companyId = req.userId;
     const recruiters = await Recruiter.find({ companyId, isActive: true })
       .sort({ createdAt: -1 });
     res.json({ recruiters });
@@ -437,7 +437,7 @@ exports.createRecruiter = async (req, res) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { companyId } = req.user;
+    const companyId = req.userId;
     const { name, email, keySkills } = req.body;
 
     // Check if recruiter already exists for this company
@@ -462,7 +462,7 @@ exports.createRecruiter = async (req, res) => {
       keySkills: keySkills || [],
       companyId,
       isInvited: true,
-      createdBy: req.user.id
+      createdBy: req.userId
     });
 
     await recruiter.save();
@@ -479,7 +479,7 @@ exports.updateRecruiter = async (req, res) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { companyId } = req.user;
+    const companyId = req.userId;
     const { id } = req.params;
     const { name, email, keySkills } = req.body;
 
@@ -509,7 +509,7 @@ exports.updateRecruiter = async (req, res) => {
 
 exports.deleteRecruiter = async (req, res) => {
   try {
-    const { companyId } = req.user;
+    const companyId = req.userId;
     const { id } = req.params;
 
     const recruiter = await Recruiter.findOne({ _id: id, companyId, isActive: true });
@@ -533,7 +533,7 @@ exports.bulkCreateRecruiters = async (req, res) => {
       return res.status(400).json({ errors: validationErrors.array() });
     }
 
-    const { companyId } = req.user;
+    const companyId = req.userId;
     const { items } = req.body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
@@ -558,7 +558,7 @@ exports.bulkCreateRecruiters = async (req, res) => {
           keySkills: item.keySkills ? item.keySkills.split(',').map(skill => skill.trim()).filter(skill => skill) : [],
           companyId,
           isInvited: true,
-          createdBy: req.user.id
+          createdBy: req.userId
         });
 
         await recruiter.save();

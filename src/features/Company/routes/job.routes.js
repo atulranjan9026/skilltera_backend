@@ -137,6 +137,32 @@ const jobValidation = [
         .isArray()
         .withMessage('Required skills must be an array'),
     
+    // Enterprise Assignment
+    body('enterpriseAssignment.lobId')
+        .optional()
+        .isMongoId()
+        .withMessage('Invalid LOB ID'),
+    
+    body('enterpriseAssignment.hiringManagerId')
+        .optional()
+        .isMongoId()
+        .withMessage('Invalid Hiring Manager ID'),
+    
+    body('enterpriseAssignment.backupHiringManagerId')
+        .optional()
+        .isMongoId()
+        .withMessage('Invalid Backup Hiring Manager ID'),
+    
+    body('enterpriseAssignment.recruiterIds')
+        .optional()
+        .isArray()
+        .withMessage('Recruiter IDs must be an array'),
+
+    body('enterpriseAssignment.recruiterIds.*')
+        .optional()
+        .isMongoId()
+        .withMessage('Invalid Recruiter ID'),
+    
     // Custom validation for salary range
     body('salary.max').custom((value, { req }) => {
         if (value && req.body.salary.min && value < req.body.salary.min) {
@@ -265,6 +291,32 @@ const jobUpdateValidation = [
         .trim()
         .isLength({ min: 2, max: 50 })
         .withMessage('Category must be between 2 and 50 characters'),
+
+    // Enterprise Assignment
+    body('enterpriseAssignment.lobId')
+        .optional()
+        .isMongoId()
+        .withMessage('Invalid LOB ID'),
+    
+    body('enterpriseAssignment.hiringManagerId')
+        .optional()
+        .isMongoId()
+        .withMessage('Invalid Hiring Manager ID'),
+    
+    body('enterpriseAssignment.backupHiringManagerId')
+        .optional()
+        .isMongoId()
+        .withMessage('Invalid Backup Hiring Manager ID'),
+    
+    body('enterpriseAssignment.recruiterIds')
+        .optional()
+        .isArray()
+        .withMessage('Recruiter IDs must be an array'),
+
+    body('enterpriseAssignment.recruiterIds.*')
+        .optional()
+        .isMongoId()
+        .withMessage('Invalid Recruiter ID'),
 
     // Custom validation for salary range
     body('salary.max').custom((value, { req }) => {

@@ -146,6 +146,26 @@ const jobSchema = new mongoose.Schema({
     // SEO & Search
     tags: [String],
     category: String,
+    
+    // Enterprise Assignment
+    enterpriseAssignment: {
+        lobId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'LOB'
+        },
+        hiringManagerId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'HiringManagers'
+        },
+        backupHiringManagerId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'BackupHiringManagers'
+        },
+        recruiterIds: [{
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Recruiters'
+        }]
+    },
 
 }, {
     timestamps: true

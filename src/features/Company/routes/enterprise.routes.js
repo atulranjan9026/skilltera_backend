@@ -55,7 +55,7 @@ router.post('/hiring-managers/bulk', bulkHiringManagerValidation, enterpriseCont
 const backupHiringManagerValidation = [
   body('name').trim().isLength({ min: 3, max: 100 }).withMessage('Name must be between 3 and 100 characters'),
   body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
-  body('hiringManagerId').optional().isMongoId().withMessage('Invalid hiring manager ID')
+  body('hiringManagerId').optional({ checkFalsy: true }).isMongoId().withMessage('Invalid hiring manager ID')
 ];
 
 router.get('/backup-hiring-managers', enterpriseController.getAllBackupHiringManagers);

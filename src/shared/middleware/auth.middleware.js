@@ -24,13 +24,13 @@ const authenticate = asyncHandler(async (req, res, next) => {
     // Verify token
     const decoded = TokenManager.verifyAccessToken(token);
     
-    console.log('Decoded token:', decoded);
+    // console.log('Decoded token:', decoded);
 
     // Get user based on role
     let user = null;
     const { role } = decoded;
     
-    console.log('Token role:', role);
+    // console.log('Token role:', role);
 
     switch (role) {
         case 'candidate':
@@ -86,8 +86,8 @@ const authenticate = asyncHandler(async (req, res, next) => {
     
     req.userRole = finalRole;
     
-    console.log('User attached to request:', user ? { _id: user._id, email: user.email, role: user.role, modelName: user.constructor.modelName } : 'null');
-    console.log('Final userRole:', req.userRole);
+    // console.log('User attached to request:', user ? { _id: user._id, email: user.email, role: user.role, modelName: user.constructor.modelName } : 'null');
+    // console.log('Final userRole:', req.userRole);
 
     next();
 });
@@ -175,7 +175,7 @@ const requireRole = (...roles) => {
             }
         }
 
-        console.log(`Role check - User role: ${userRole}, Required roles: ${roles.join(', ')}`);
+        // console.log(`Role check - User role: ${userRole}, Required roles: ${roles.join(', ')}`);
 
         if (!roles.includes(userRole)) {
             throw ApiError.forbidden(ERROR_MESSAGES.FORBIDDEN);

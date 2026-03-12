@@ -122,6 +122,14 @@ const createJob = async (req, res) => {
             // Skills
             requiredSkills: req.body.requiredSkills || [],
             
+            // Enterprise Assignment
+            enterpriseAssignment: req.body.enterpriseAssignment ? {
+                lobId: req.body.enterpriseAssignment.lobId || null,
+                hiringManagerId: req.body.enterpriseAssignment.hiringManagerId || null,
+                backupHiringManagerId: req.body.enterpriseAssignment.backupHiringManagerId || null,
+                recruiterIds: req.body.enterpriseAssignment.recruiterIds || []
+            } : undefined,
+
             // Metadata
             status: 'active',
             postedDate: new Date(),
@@ -273,7 +281,16 @@ const updateJob = async (req, res) => {
         }
 
         // Update job fields
-        Object.assign(job, req.body);
+        const { enterpriseAssignment, ...otherData } = req.body;
+        Object.assign(job, otherData);
+        
+        if (enterpriseAssignment) {
+            job.enterpriseAssignment = {
+                ...job.enterpriseAssignment,
+                ...enterpriseAssignment
+            };
+        }
+        
         job.lastUpdated = new Date();
 
         await job.save();

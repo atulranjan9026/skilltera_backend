@@ -21,7 +21,7 @@ const recruiterSchema = new mongoose.Schema({
   }],
   companyId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Company',
+    ref: 'Companies',
     required: true
   },
   isActive: {
@@ -38,7 +38,7 @@ const recruiterSchema = new mongoose.Schema({
   },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
+    ref: 'Companies'
   }
 }, {
   timestamps: true

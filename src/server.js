@@ -3,6 +3,24 @@ const app = require('./app');
 const { connectDB, configureCloudinary } = require('./config');
 const logger = require('./shared/utils/logger');
 
+const http = require('http');
+const socketIo = require('socket.io');
+const setupSocket = require('./features/chat/socket.setup');
+
+// Create HTTP server instance
+const server = http.createServer(app);
+
+// Initialize Socket.io
+const io = socketIo(server, {
+    cors: {
+        origin: [process.env.CLIENT_URL, process.env.CLIENT_URL_PROD, 'http://localhost:5173', 'http://localhost:3000'].filter(Boolean),
+        methods: ["GET", "POST"]
+    }
+});
+
+// Setup sockets
+setupSocket(io);
+
 const PORT = process.env.PORT || 5000;
 
 /**
@@ -20,7 +38,7 @@ const startServer = async () => {
         logger.info(isCloudinaryConfigured() ? '✓ Cloudinary configured' : '✓ Using local file storage for uploads');
 
         // Start Express Server
-        const server = app.listen(PORT, () => {
+        server.listen(PORT, () => {
             // logger.info(`
             // ╔════════════════════════════════════════════════════════════╗
             // ║                                                            ║
