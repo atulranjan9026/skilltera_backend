@@ -5,6 +5,7 @@ const { ERROR_MESSAGES } = require('../constants');
 const Candidate = require('../../features/candidates/models/candidate.model');
 const Company = require('../models/company.model');
 const HiringManager = require('../models/hiringManager.model');
+const BackupHiringManager = require('../models/backupHiringManager.model');
 const Interviewer = require('../models/interviewer.model');
 
 /**
@@ -51,6 +52,13 @@ const authenticate = asyncHandler(async (req, res, next) => {
             user = await HiringManager.findById(decoded.userId)
                 .select('-password')
                 .populate({ path: 'companyId', select: 'companyName email' });
+            break;
+
+        case 'backup_hiring_manager':
+            user = await BackupHiringManager.findById(decoded.userId)
+                .select('-password')
+                .populate({ path: 'companyId', select: 'companyName email' })
+                .populate({ path: 'hiringManagerId', select: 'name email' });
             break;
         
         case 'interviewer':
@@ -121,6 +129,13 @@ const optionalAuth = asyncHandler(async (req, res, next) => {
                     user = await HiringManager.findById(decoded.userId)
                         .select('-password')
                         .populate({ path: 'companyId', select: 'companyName email' });
+                    break;
+
+                case 'backup_hiring_manager':
+                    user = await BackupHiringManager.findById(decoded.userId)
+                        .select('-password')
+                        .populate({ path: 'companyId', select: 'companyName email' })
+                        .populate({ path: 'hiringManagerId', select: 'name email' });
                     break;
                 
                 case 'interviewer':
@@ -213,6 +228,10 @@ const verifyRefreshToken = asyncHandler(async (req, res, next) => {
         
         case 'hiring_manager':
             user = await HiringManager.findById(decoded.userId);
+            break;
+
+        case 'backup_hiring_manager':
+            user = await BackupHiringManager.findById(decoded.userId);
             break;
         
         case 'interviewer':

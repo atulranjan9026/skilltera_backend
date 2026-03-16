@@ -337,9 +337,9 @@ const jobUpdateValidation = [
 
 // Routes
 router.post('/:companyId/jobs', authenticate, requireRole('company'), jobValidation, jobController.createJob);
-router.get('/:companyId/jobs', authenticate, requireRole('company'), jobController.getCompanyJobs);
+router.get('/:companyId/jobs', authenticate, requireRole('company', 'hiring_manager', 'backup_hiring_manager'), jobController.getCompanyJobs);
 router.get('/jobs/stats', authenticate, requireRole('company'), jobController.getJobStats);
-router.get('/:companyId/jobs/:id', authenticate, requireRole('company'), jobController.getJobById);
+router.get('/:companyId/jobs/:id', authenticate, requireRole('company', 'hiring_manager', 'backup_hiring_manager'), jobController.getJobById);
 router.put('/:companyId/jobs/:id', authenticate, requireRole('company'), jobUpdateValidation, jobController.updateJob);
 router.delete('/:companyId/jobs/:id', authenticate, requireRole('company'), jobController.deleteJob);
 router.patch('/:companyId/jobs/:id/toggle-status', authenticate, requireRole('company'), jobController.toggleJobStatus);

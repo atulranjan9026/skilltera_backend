@@ -9,6 +9,7 @@ const { ERROR_MESSAGES, SUCCESS_MESSAGES } = require('../../../shared/constants'
 
 const Company = require('../../../shared/models/company.model');
 const HiringManager = require('../../../shared/models/hiringManager.model');
+const BackupHiringManager = require('../../../shared/models/backupHiringManager.model');
 const Interviewer = require('../../../shared/models/interviewer.model');
 const Job = require('../../../shared/models/job.model');
 const Candidate = require('../../candidates/models/candidate.model');
@@ -58,7 +59,7 @@ exports.companySignup = asyncHandler(async (req, res) => {
 
 /**
  * Unified Company Login
- * Supports: Company Admin, Hiring Manager, and Interviewer roles.
+ * Supports: Company Admin, Hiring Manager, Backup Hiring Manager, and Interviewer roles.
  * @route   POST /api/v1/company/auth/login
  * @access  Public
  */
@@ -124,6 +125,21 @@ exports.companyLogin = asyncHandler(async (req, res) => {
         } catch (_) { /* All models exhausted */ }
     }
 
+    // 4. Try Backup Hiring Manager login
+    if (!user) {
+        try {
+            const backupHiringManager = await BackupHiringManager.login(email, password);
+            if (backupHiringManager && backupHiringManager.companyId.toString() === companyId.toString()) {
+                user = backupHiringManager;
+                role = 'backup_hiring_manager';
+                userData = await BackupHiringManager.findById(backupHiringManager._id)
+                    .select('-password')
+                    .populate({ path: 'companyId', select: 'companyName email' })
+                    .populate({ path: 'hiringManagerId', select: 'name email' });
+            }
+        } catch (_) { /* All models exhausted */ }
+    }
+
     if (!user || !role) {
         throw ApiError.unauthorized(ERROR_MESSAGES.INVALID_CREDENTIALS);
     }
@@ -156,6 +172,20 @@ exports.getCompanyJobs = asyncHandler(async (req, res) => {
         throw ApiError.notFound('Company not found');
     }
 
+    // Enforce scoping: non-company users can only access their own companyId
+    const requestedCompanyId = companyId.toString();
+    const authedCompanyId =
+        req.userRole === 'company'
+            ? req.userId.toString()
+            : (req.user?.companyId?._id || req.user?.companyId)?.toString();
+
+    if (authedCompanyId && authedCompanyId !== requestedCompanyId) {
+        throw ApiError.forbidden(ERROR_MESSAGES.FORBIDDEN);
+    }
+
+    const userIdObj =
+        typeof req.userId === 'string' ? new ObjectId(req.userId) : req.userId;
+
     // FIX: getCompanyApplications already handles both string and ObjectId with $or,
     // but getCompanyJobs was querying with { companyId } (plain string) only.
     // Jobs may be stored with companyId as ObjectId — match both to be safe.
@@ -177,10 +207,31 @@ exports.getCompanyJobs = asyncHandler(async (req, res) => {
     if (status)               filters.status = status;
     if (active !== undefined) filters.active = active === 'true';
 
+    // Hiring Managers / Backup Hiring Managers can only see jobs assigned to them.
+    // Jobs may be stored in either legacy shape (top-level hiringManagerId fields)
+    // or new shape (enterpriseAssignment.*).
+    let roleScope = null;
+    if (req.userRole === 'hiring_manager') {
+        roleScope = {
+            $or: [
+                { 'enterpriseAssignment.hiringManagerId': userIdObj },
+                { hiringManagerId: userIdObj },
+            ],
+        };
+    } else if (req.userRole === 'backup_hiring_manager') {
+        roleScope = {
+            $or: [
+                { 'enterpriseAssignment.backupHiringManagerId': userIdObj },
+                { backupHiringManagerId: userIdObj },
+            ],
+        };
+    }
+
     // FIX: Use $and to combine the $or companyId match with additional filters
-    const finalQuery = Object.keys(filters).length > 0
-        ? { $and: [baseQuery, filters] }
-        : baseQuery;
+    const andParts = [baseQuery];
+    if (Object.keys(filters).length > 0) andParts.push(filters);
+    if (roleScope) andParts.push(roleScope);
+    const finalQuery = andParts.length > 1 ? { $and: andParts } : baseQuery;
 
     const skip = (page - 1) * limit;
 
@@ -229,13 +280,50 @@ exports.getCompanyApplications = asyncHandler(async (req, res) => {
     const company = await Company.findById(companyId);
     if (!company) throw ApiError.notFound('Company not found');
 
-    const companyJobs = await mongoose.connection.db.collection('jobs')
-        .find({
+    // Enforce scoping: non-company users can only access their own companyId
+    const requestedCompanyId = companyId.toString();
+    const authedCompanyId =
+        req.userRole === 'company'
+            ? req.userId.toString()
+            : (req.user?.companyId?._id || req.user?.companyId)?.toString();
+
+    if (authedCompanyId && authedCompanyId !== requestedCompanyId) {
+        throw ApiError.forbidden(ERROR_MESSAGES.FORBIDDEN);
+    }
+
+    const userIdObj =
+        typeof req.userId === 'string' ? new ObjectId(req.userId) : req.userId;
+
+    // Hiring Managers / Backup Hiring Managers can only see applications for jobs assigned to them.
+    // Jobs may be stored in either legacy shape (top-level hiringManagerId fields)
+    // or new shape (enterpriseAssignment.*).
+    let roleJobScope = null;
+    if (req.userRole === 'hiring_manager') {
+        roleJobScope = {
             $or: [
-                { companyId: companyId },
-                { companyId: new ObjectId(companyId) }
-            ]
-        })
+                { 'enterpriseAssignment.hiringManagerId': userIdObj },
+                { hiringManagerId: userIdObj },
+            ],
+        };
+    } else if (req.userRole === 'backup_hiring_manager') {
+        roleJobScope = {
+            $or: [
+                { 'enterpriseAssignment.backupHiringManagerId': userIdObj },
+                { backupHiringManagerId: userIdObj },
+            ],
+        };
+    }
+
+    const jobFindQuery = {
+        $or: [
+            { companyId: companyId },
+            { companyId: new ObjectId(companyId) }
+        ]
+    };
+    const finalJobFindQuery = roleJobScope ? { $and: [jobFindQuery, roleJobScope] } : jobFindQuery;
+
+    const companyJobs = await mongoose.connection.db.collection('jobs')
+        .find(finalJobFindQuery)
         .project({ _id: 1 })
         .toArray();
 
@@ -335,6 +423,20 @@ exports.updateApplicationStatus = asyncHandler(async (req, res) => {
     const company = await Company.findById(companyId);
     if (!company) throw ApiError.notFound('Company not found');
 
+    // Enforce scoping: non-company users can only access their own companyId
+    const requestedCompanyId = companyId.toString();
+    const authedCompanyId =
+        req.userRole === 'company'
+            ? req.userId.toString()
+            : (req.user?.companyId?._id || req.user?.companyId)?.toString();
+
+    if (authedCompanyId && authedCompanyId !== requestedCompanyId) {
+        throw ApiError.forbidden(ERROR_MESSAGES.FORBIDDEN);
+    }
+
+    const userIdObj =
+        typeof req.userId === 'string' ? new ObjectId(req.userId) : req.userId;
+
     // 1. Find the application
     const application = await mongoose.connection.db.collection('applications').findOne({
         _id: new ObjectId(applicationId)
@@ -355,6 +457,19 @@ exports.updateApplicationStatus = asyncHandler(async (req, res) => {
 
     if (!job) {
         throw ApiError.forbidden('You do not have permission to update this application');
+    }
+
+    // Hiring Managers / Backup Hiring Managers can only update applications for jobs assigned to them
+    if (req.userRole === 'hiring_manager') {
+        const assigned =
+            (job.enterpriseAssignment?.hiringManagerId && job.enterpriseAssignment.hiringManagerId.toString() === userIdObj.toString()) ||
+            (job.hiringManagerId && job.hiringManagerId.toString() === userIdObj.toString());
+        if (!assigned) throw ApiError.forbidden('You do not have permission to update this application');
+    } else if (req.userRole === 'backup_hiring_manager') {
+        const assigned =
+            (job.enterpriseAssignment?.backupHiringManagerId && job.enterpriseAssignment.backupHiringManagerId.toString() === userIdObj.toString()) ||
+            (job.backupHiringManagerId && job.backupHiringManagerId.toString() === userIdObj.toString());
+        if (!assigned) throw ApiError.forbidden('You do not have permission to update this application');
     }
 
     // 3. Update the status using the model for pre-save hooks

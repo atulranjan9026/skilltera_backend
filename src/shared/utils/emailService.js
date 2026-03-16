@@ -260,7 +260,7 @@ class EmailService {
      * @param {string} password - Generated password
      */
     async sendHiringManagerWelcomeEmail(email, name, password) {
-        const url = `${process.env.CLIENT_URL || 'https://skilltera.com'}/client`;
+        const url =  'https://skilltera.com/company/login';
         
         const html = `
       <!DOCTYPE html>

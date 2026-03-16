@@ -184,10 +184,36 @@ const getCompanyJobs = async (req, res) => {
         const { page = 1, limit = 10, status, jobType } = req.query;
         const skip = (page - 1) * limit;
 
+        // Enforce scoping for Hiring Managers / Backup Hiring Managers
+        const authedCompanyId =
+            req.userRole === 'company'
+                ? req.userId.toString()
+                : (req.user?.companyId?._id || req.user?.companyId)?.toString();
+
+        if (authedCompanyId && authedCompanyId !== companyId.toString()) {
+            return res.status(403).json({
+                success: false,
+                message: 'Forbidden'
+            });
+        }
+
         // Build filter
         const filter = { companyId: companyId };
         if (status) filter.status = status;
         if (jobType) filter.jobType = jobType;
+
+        // Limit job visibility for Hiring Manager / Backup Hiring Manager
+        if (req.userRole === 'hiring_manager') {
+            filter.$or = [
+                { 'enterpriseAssignment.hiringManagerId': req.userId },
+                { hiringManagerId: req.userId },
+            ];
+        } else if (req.userRole === 'backup_hiring_manager') {
+            filter.$or = [
+                { 'enterpriseAssignment.backupHiringManagerId': req.userId },
+                { backupHiringManagerId: req.userId },
+            ];
+        }
 
         console.log('Job filter:', filter);
 
@@ -225,7 +251,20 @@ const getCompanyJobs = async (req, res) => {
 const getJobById = async (req, res) => {
     try {
         const { id } = req.params;
-        const company = await Company.findById(req.user._id);
+        const requestedCompanyId = req.params.companyId;
+        const resolvedCompanyId =
+            req.userRole === 'company'
+                ? req.userId
+                : (req.user?.companyId?._id || req.user?.companyId);
+
+        if (resolvedCompanyId && requestedCompanyId && resolvedCompanyId.toString() !== requestedCompanyId.toString()) {
+            return res.status(403).json({
+                success: false,
+                message: 'Forbidden'
+            });
+        }
+
+        const company = await Company.findById(resolvedCompanyId);
 
         if (!company) {
             return res.status(404).json({
@@ -234,7 +273,20 @@ const getJobById = async (req, res) => {
             });
         }
 
-        const job = await Job.findOne({ _id: id, companyId: company._id })
+        const baseFilter = { _id: id, companyId: company._id };
+        if (req.userRole === 'hiring_manager') {
+            baseFilter.$or = [
+                { 'enterpriseAssignment.hiringManagerId': req.userId },
+                { hiringManagerId: req.userId },
+            ];
+        } else if (req.userRole === 'backup_hiring_manager') {
+            baseFilter.$or = [
+                { 'enterpriseAssignment.backupHiringManagerId': req.userId },
+                { backupHiringManagerId: req.userId },
+            ];
+        }
+
+        const job = await Job.findOne(baseFilter)
             .populate('requiredSkills.skillId', 'name')
             .populate('optionalSkills.skillId', 'name');
 
