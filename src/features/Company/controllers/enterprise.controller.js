@@ -3,6 +3,17 @@ const HiringManager = require('../models/hiringManager.model');
 const BackupHiringManager = require('../models/backupHiringManager.model');
 const Recruiter = require('../models/recruiter.model');
 const { validationResult } = require('express-validator');
+const bcrypt = require('bcrypt');
+const emailService = require('../../../shared/utils/emailService');
+
+const generatePassword = () => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let password = '';
+  for (let i = 0; i < 8; i++) {
+    password += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return password;
+};
 
 // ─── LOB Controllers ───────────────────────────────────────────────────────────
 
@@ -85,13 +96,10 @@ exports.deleteLOB = async (req, res) => {
     const companyId = req.userId;
     const { id } = req.params;
 
-    const lob = await LOB.findOne({ _id: id, companyId, isActive: true });
+    const lob = await LOB.findOneAndDelete({ _id: id, companyId });
     if (!lob) {
       return res.status(404).json({ error: 'LOB not found' });
     }
-
-    lob.isActive = false;
-    await lob.save();
 
     res.json({ message: 'LOB deleted successfully' });
   } catch (error) {
@@ -180,14 +188,26 @@ exports.createHiringManager = async (req, res) => {
       return res.status(400).json({ error: 'Hiring manager with this email already exists' });
     }
 
+    const plainPassword = generatePassword();
+    const salt = await bcrypt.genSalt();
+    const hashedPassword = await bcrypt.hash(plainPassword, salt);
+
     const hiringManager = new HiringManager({
       name,
       email,
+      password: hashedPassword,
       companyId,
       createdBy: req.userId
     });
 
     await hiringManager.save();
+    
+    try {
+      await emailService.sendHiringManagerWelcomeEmail(email, name, plainPassword);
+    } catch (emailErr) {
+      console.error('Error sending welcome email:', emailErr);
+    }
+
     res.status(201).json({ message: 'Hiring manager created successfully', hiringManager });
   } catch (error) {
     res.status(500).json({ error: 'Failed to create hiring manager' });
@@ -233,13 +253,10 @@ exports.deleteHiringManager = async (req, res) => {
     const companyId = req.userId;
     const { id } = req.params;
 
-    const hiringManager = await HiringManager.findOne({ _id: id, companyId, isActive: true });
+    const hiringManager = await HiringManager.findOneAndDelete({ _id: id, companyId });
     if (!hiringManager) {
       return res.status(404).json({ error: 'Hiring manager not found' });
     }
-
-    hiringManager.isActive = false;
-    await hiringManager.save();
 
     res.json({ message: 'Hiring manager deleted successfully' });
   } catch (error) {
@@ -273,15 +290,26 @@ exports.bulkCreateHiringManagers = async (req, res) => {
           continue;
         }
 
+        const plainPassword = generatePassword();
+        const salt = await bcrypt.genSalt();
+        const hashedPassword = await bcrypt.hash(plainPassword, salt);
+
         const hiringManager = new HiringManager({
           name: item.name,
           email: item.email,
+          password: hashedPassword,
           companyId,
           createdBy: req.userId
         });
 
         await hiringManager.save();
         results.push(hiringManager);
+
+        try {
+          await emailService.sendHiringManagerWelcomeEmail(item.email, item.name, plainPassword);
+        } catch (emailErr) {
+          console.error('Error sending welcome email in bulk creation:', emailErr);
+        }
       } catch (error) {
         bulkErrors.push({ item, error: 'Failed to create hiring manager' });
       }
@@ -337,9 +365,14 @@ exports.createBackupHiringManager = async (req, res) => {
       }
     }
 
+    const plainPassword = generatePassword();
+    const salt = await bcrypt.genSalt();
+    const hashedPassword = await bcrypt.hash(plainPassword, salt);
+
     const backupHiringManager = new BackupHiringManager({
       name,
       email,
+      password: hashedPassword,
       hiringManagerId: hiringManagerId || null,
       companyId,
       createdBy: req.userId
@@ -347,6 +380,12 @@ exports.createBackupHiringManager = async (req, res) => {
 
     await backupHiringManager.save();
     await backupHiringManager.populate('hiringManagerId', 'name email');
+
+    try {
+      await emailService.sendBackupHiringManagerWelcomeEmail(email, name, plainPassword);
+    } catch (emailErr) {
+      console.error('Error sending welcome email:', emailErr);
+    }
 
     res.status(201).json({ message: 'Backup hiring manager created successfully', backupHiringManager });
   } catch (error) {
@@ -403,13 +442,10 @@ exports.deleteBackupHiringManager = async (req, res) => {
     const companyId = req.userId;
     const { id } = req.params;
 
-    const backupHiringManager = await BackupHiringManager.findOne({ _id: id, companyId, isActive: true });
+    const backupHiringManager = await BackupHiringManager.findOneAndDelete({ _id: id, companyId });
     if (!backupHiringManager) {
       return res.status(404).json({ error: 'Backup hiring manager not found' });
     }
-
-    backupHiringManager.isActive = false;
-    await backupHiringManager.save();
 
     res.json({ message: 'Backup hiring manager deleted successfully' });
   } catch (error) {
@@ -512,13 +548,10 @@ exports.deleteRecruiter = async (req, res) => {
     const companyId = req.userId;
     const { id } = req.params;
 
-    const recruiter = await Recruiter.findOne({ _id: id, companyId, isActive: true });
+    const recruiter = await Recruiter.findOneAndDelete({ _id: id, companyId });
     if (!recruiter) {
       return res.status(404).json({ error: 'Recruiter not found' });
     }
-
-    recruiter.isActive = false;
-    await recruiter.save();
 
     res.json({ message: 'Recruiter deleted successfully' });
   } catch (error) {

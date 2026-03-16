@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 // ── Controllers ─────────────────────────────────────────────────
-const { companySignup, companyLogin, getCompanyJobs, getCompanyApplications } = require('../controllers/company.controller');
+const { companySignup, companyLogin, getCompanyJobs, getCompanyApplications, updateApplicationStatus } = require('../controllers/company.controller');
 const { viewAllCompany, viewAllCompanyList } = require('../controllers/companyManagementController');
 
 // ── Middleware ─────────────────────────────────────────────────
@@ -47,5 +47,10 @@ router.get('/:companyId/jobs', getCompanyJobs);
 // @desc   Get all applications for company's jobs
 // @access Private (Company Admin/Hiring Manager)
 router.get('/:companyId/applications', getCompanyApplications);
+
+// @route  PUT /api/v1/company/:companyId/applications/:applicationId
+// @desc   Update application status
+// @access Private (Company Admin/Hiring Manager)
+router.put('/:companyId/applications/:applicationId', updateApplicationStatus);
 
 module.exports = router;

@@ -19,6 +19,11 @@ const backupHiringManagerSchema = new mongoose.Schema({
     ref: 'Companies',
     required: true
   },
+  password: {
+    type: String,
+    required: true,
+    select: false
+  },
   hiringManagerId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'HiringManagers'

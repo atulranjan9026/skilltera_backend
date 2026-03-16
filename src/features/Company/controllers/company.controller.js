@@ -318,3 +318,67 @@ exports.getCompanyApplications = asyncHandler(async (req, res) => {
         }
     }, 'Company applications retrieved successfully').send(res);
 });
+
+/**
+ * Update Application Status
+ * @route   PUT /api/v1/company/:companyId/applications/:applicationId
+ * @access  Private (Company Admin/Hiring Manager)
+ */
+exports.updateApplicationStatus = asyncHandler(async (req, res) => {
+    const { companyId, applicationId } = req.params;
+    const { status, notes } = req.body;
+
+    if (!status) {
+        throw ApiError.badRequest('Status is required');
+    }
+
+    const company = await Company.findById(companyId);
+    if (!company) throw ApiError.notFound('Company not found');
+
+    // 1. Find the application
+    const application = await mongoose.connection.db.collection('applications').findOne({
+        _id: new ObjectId(applicationId)
+    });
+
+    if (!application) {
+        throw ApiError.notFound('Application not found');
+    }
+
+    // 2. Verify the job belongs to the company
+    const job = await mongoose.connection.db.collection('jobs').findOne({
+        _id: application.job,
+        $or: [
+            { companyId: companyId },
+            { companyId: new ObjectId(companyId) }
+        ]
+    });
+
+    if (!job) {
+        throw ApiError.forbidden('You do not have permission to update this application');
+    }
+
+    // 3. Update the status using the model for pre-save hooks
+    const Application = require('../../../shared/models/application.model');
+    
+    const appDoc = await Application.findById(applicationId);
+    if (!appDoc) throw ApiError.notFound('Application document not found');
+
+    appDoc.status = status;
+    
+    // Add to history
+    appDoc.statusHistory.push({
+        status,
+        changedAt: new Date(),
+        changedBy: req.userId,
+        changedByModel: req.userRole === 'hiring_manager' ? 'Company' : 'Company', // Both map to Company side in model enum
+        notes: notes || `Status changed to ${status}`
+    });
+
+    await appDoc.save();
+
+    return new ApiResponse(
+        HTTP_STATUS.OK,
+        appDoc,
+        `Application status updated to ${status}`
+    ).send(res);
+});

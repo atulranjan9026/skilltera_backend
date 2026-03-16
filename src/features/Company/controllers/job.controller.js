@@ -2,6 +2,7 @@ const Job = require('../../../shared/models/job.model');
 const Company = require('../../../shared/models/company.model');
 const Skill = require('../../candidates/models/skill.model');
 const { validationResult } = require('express-validator');
+const ApiError = require('../../../shared/utils/ApiError');
 
 /**
  * Job Controller
@@ -62,6 +63,14 @@ const createJob = async (req, res) => {
                 success: false,
                 message: 'Validation failed',
                 errors: errors.array()
+            });
+        }
+
+        // Restriction: Hiring Managers cannot post jobs
+        if (req.userRole === 'hiring_manager') {
+            return res.status(403).json({
+                success: false,
+                message: 'You do not have permission to post jobs'
             });
         }
 

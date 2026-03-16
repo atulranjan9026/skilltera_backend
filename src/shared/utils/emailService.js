@@ -253,6 +253,151 @@ class EmailService {
             html,
         });
     }
+    /**
+     * Send Hiring Manager Welcome Email (Account Creation)
+     * @param {string} email - Recipient email
+     * @param {string} name - Recipient name
+     * @param {string} password - Generated password
+     */
+    async sendHiringManagerWelcomeEmail(email, name, password) {
+        const url = `${process.env.CLIENT_URL || 'https://skilltera.com'}/client`;
+        
+        const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+          .button { display: inline-block; padding: 12px 30px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+          .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>Welcome to SkillTera!</h1>
+          </div>
+          <div class="content">
+            <h2>Dear ${name},</h2>
+            <p>Welcome to Skilltera! Your Hiring Manager account has been created successfully.</p>
+            <p>You can now login to Skilltera and manage your hiring activities.</p>
+            <p>Please login using this link: <a href="${url}">${url}</a></p>
+            <p>Below are your login credentials:</p>
+            <ul>
+                <li><b>Email:</b> ${email}</li>
+                <li><b>Password:</b> ${password}</li>
+            </ul>
+            <br>
+            <p>Once logged in, you will be able to:</p>
+            <ul>
+              <li>View jobs assigned to you</li>
+              <li>Assign interviewers to jobs</li>
+              <li>Review candidate profiles and test scores</li>
+              <li>Shortlist candidates for interviews</li>
+            </ul>
+          </div>
+          <div class="footer">
+            <p>Regards,<br>The Skilltera Team<br>Hire Top Talents in Technology.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+        `;
+
+        const text = `
+Dear ${name},
+
+Welcome to Skilltera! Your Hiring Manager account has been created successfully.
+
+Please login into ${url} with your email as ${email} and password as "${password}".
+
+Once logged in, you will be able to view assigned jobs, interviewers, candidate profiles, and more.
+
+Regards,
+The Skilltera Team
+        `;
+
+        return this.sendEmail({
+            to: email,
+            subject: 'Welcome to Skilltera - Your Hiring Manager Account',
+            text,
+            html,
+        });
+    }
+
+    /**
+     * Send Backup Hiring Manager Welcome Email (Account Creation)
+     * @param {string} email - Recipient email
+     * @param {string} name - Recipient name
+     * @param {string} password - Generated password
+     */
+    async sendBackupHiringManagerWelcomeEmail(email, name, password) {
+        const url = `${process.env.CLIENT_URL || 'https://skilltera.com'}/backupHiringManagerLogin`;
+
+        const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+          .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>Welcome to SkillTera!</h1>
+          </div>
+          <div class="content">
+            <h2>Dear ${name},</h2>
+            <p>Welcome to Skilltera! Your Backup Hiring Manager account has been created successfully.</p>
+            <p>You can now login to Skilltera and assist with hiring activities.</p>
+            <p>Please login using this link: <a href="${url}">${url}</a></p>
+            <p>Below are your login credentials:</p>
+            <ul>
+                <li><b>Email:</b> ${email}</li>
+                <li><b>Password:</b> ${password}</li>
+            </ul>
+            <br>
+            <p>Once logged in, you will be able to:</p>
+            <ul>
+              <li>View jobs assigned to the Hiring Manager you support</li>
+              <li>View candidate profiles and test scores for those jobs</li>
+              <li>Support shortlist and interview coordination workflows</li>
+            </ul>
+          </div>
+          <div class="footer">
+            <p>Regards,<br>The Skilltera Team<br>Hire Top Talents in Technology.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+        `;
+
+        const text = `
+Dear ${name},
+
+Welcome to Skilltera! Your Backup Hiring Manager account has been created successfully.
+
+Please login into ${url} with your email as ${email} and password as "${password}".
+
+Regards,
+The Skilltera Team
+        `;
+
+        return this.sendEmail({
+            to: email,
+            subject: 'Welcome to Skilltera - Your Backup Hiring Manager Account',
+            text,
+            html,
+        });
+    }
 }
 
 // Export singleton instance

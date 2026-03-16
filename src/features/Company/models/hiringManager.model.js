@@ -19,6 +19,10 @@ const hiringManagerSchema = new mongoose.Schema({
     ref: 'Companies',
     required: true
   },
+  password: {
+    type: String,
+    required: true
+  },
   isActive: {
     type: Boolean,
     default: true
