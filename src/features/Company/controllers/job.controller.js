@@ -332,7 +332,32 @@ const updateJob = async (req, res) => {
             });
         }
 
-        const job = await Job.findOne({ _id: id, companyId: company._id });
+        // Use findOneAndUpdate to avoid version conflicts
+        const { enterpriseAssignment, ...otherData } = req.body;
+        
+        // Prepare update data
+        const updateData = {
+            ...otherData,
+            lastUpdated: new Date()
+        };
+
+        // Handle enterprise assignment if present
+        if (enterpriseAssignment) {
+            updateData.$set = {
+                ...updateData.$set || {},
+                'enterpriseAssignment': enterpriseAssignment
+            };
+        }
+
+        const job = await Job.findOneAndUpdate(
+            { _id: id, companyId: company._id },
+            updateData,
+            { 
+                new: true, // Return the updated document
+                runValidators: true, // Run schema validators
+                upsert: false // Don't create if not found
+            }
+        );
 
         if (!job) {
             return res.status(404).json({
@@ -341,21 +366,6 @@ const updateJob = async (req, res) => {
             });
         }
 
-        // Update job fields
-        const { enterpriseAssignment, ...otherData } = req.body;
-        Object.assign(job, otherData);
-        
-        if (enterpriseAssignment) {
-            job.enterpriseAssignment = {
-                ...job.enterpriseAssignment,
-                ...enterpriseAssignment
-            };
-        }
-        
-        job.lastUpdated = new Date();
-
-        await job.save();
-
         res.json({
             success: true,
             message: 'Job updated successfully',
@@ -363,6 +373,16 @@ const updateJob = async (req, res) => {
         });
     } catch (error) {
         console.error('Error updating job:', error);
+        
+        // Handle specific MongoDB version error
+        if (error.name === 'VersionError') {
+            return res.status(409).json({
+                success: false,
+                message: 'Job was modified by another user. Please refresh and try again.',
+                error: 'VERSION_CONFLICT'
+            });
+        }
+        
         res.status(500).json({
             success: false,
             message: 'Internal server error'

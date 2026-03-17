@@ -9,7 +9,12 @@ const { authenticate, requireRole } = require('../../../shared/middleware/auth.m
 const jobController = require('../controllers/job.controller');
 
 // Get all active skills for job creation
-router.get('/profile/allActiveSkills', authenticate, requireRole('company'), jobController.getAllActiveSkills);
+router.get(
+    '/profile/allActiveSkills',
+    authenticate,
+    requireRole('company', 'hiring_manager', 'backup_hiring_manager', 'candidate'),
+    jobController.getAllActiveSkills
+);
 
 // Validation rules for job creation
 const jobValidation = [

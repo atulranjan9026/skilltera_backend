@@ -30,10 +30,8 @@ const authenticate = asyncHandler(async (req, res, next) => {
     // Get user based on role
     let user = null;
     const { role } = decoded;
-    
-    // console.log('Token role:', role);
 
-    switch (role) {
+    switch (decoded.role) {
         case 'candidate':
             user = await Candidate.findById(decoded.userId)
                 .select('-password -refreshTokens')
@@ -191,6 +189,8 @@ const requireRole = (...roles) => {
         }
 
         // console.log(`Role check - User role: ${userRole}, Required roles: ${roles.join(', ')}`);
+        // TEMP DEBUG (remove after verifying in logs):
+        // console.log('Role check:', { userRole, required: roles, path: req.originalUrl, user: req.user?.email, userConstructor: req.user?.constructor?.modelName });
 
         if (!roles.includes(userRole)) {
             throw ApiError.forbidden(ERROR_MESSAGES.FORBIDDEN);
