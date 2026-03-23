@@ -75,20 +75,26 @@ class JobService {
 
             // Build base query for active jobs
             const baseQuery = {
-                active: true,
-                status: 'APPROVED' // Only show approved jobs
-                // Note: Old backend doesn't filter by status for general job listings
+                $and: [
+                    { $or: [{ active: true }, { isActive: true }, { active: { $exists: false }, isActive: { $exists: false } }] },
+                    { $or: [{ status: 'APPROVED' }, { status: 'active' }, { status: { $exists: false } }] }
+                ]
             };
 
             const jobTitleRegex = options.jobTitle ? new RegExp(options.jobTitle, 'i') : null;
 
             if (options.location) {
                 // Search across city, state, and country fields
-                baseQuery.$or = [
-                    { city: new RegExp(options.location, 'i') },
-                    { state: new RegExp(options.location, 'i') },
-                    { country: new RegExp(options.location, 'i') }
-                ];
+                baseQuery.$and.push({
+                    $or: [
+                        { city: new RegExp(options.location, 'i') },
+                        { state: new RegExp(options.location, 'i') },
+                        { country: new RegExp(options.location, 'i') },
+                        { 'location.city': new RegExp(options.location, 'i') },
+                        { 'location.state': new RegExp(options.location, 'i') },
+                        { 'location.country': new RegExp(options.location, 'i') }
+                    ]
+                });
             }
 
             if (options.postedWithin) {
@@ -96,7 +102,12 @@ class JobService {
                 const daysAgo = new Date();
                 daysAgo.setDate(daysAgo.getDate() - parseInt(options.postedWithin));
                 console.log('Filtering postedOn >=', daysAgo);
-                baseQuery.postedOn = { $gte: daysAgo };
+                baseQuery.$and.push({
+                    $or: [
+                        { postedOn: { $gte: daysAgo } },
+                        { postedDate: { $gte: daysAgo } }
+                    ]
+                });
             }
 
             if (options.jobType) {
@@ -106,14 +117,14 @@ class JobService {
             if (options.experienceLevel) {
                 const levels = Array.isArray(options.experienceLevel) ? options.experienceLevel : [options.experienceLevel];
                 const conditions = levels.map(level => {
-                    if (level.toLowerCase().includes('entry')) return { workExperience: { $lte: 2 } };
-                    if (level.toLowerCase().includes('mid')) return { workExperience: { $gt: 2, $lte: 5 } };
-                    if (level.toLowerCase().includes('senior')) return { workExperience: { $gt: 5, $lte: 8 } };
-                    if (level.toLowerCase().includes('lead')) return { workExperience: { $gt: 8, $lte: 12 } };
-                    if (level.toLowerCase().includes('director') || level.toLowerCase().includes('executive')) return { workExperience: { $gt: 12 } };
-                    return { workExperience: { $gte: 0 } };
+                    if (level.toLowerCase().includes('entry')) return { $or: [{ workExperience: { $lte: 2 } }, { minExperience: { $lte: 2 } }] };
+                    if (level.toLowerCase().includes('mid')) return { $or: [{ workExperience: { $gt: 2, $lte: 5 } }, { minExperience: { $gt: 2, $lte: 5 } }] };
+                    if (level.toLowerCase().includes('senior')) return { $or: [{ workExperience: { $gt: 5, $lte: 8 } }, { minExperience: { $gt: 5, $lte: 8 } }] };
+                    if (level.toLowerCase().includes('lead')) return { $or: [{ workExperience: { $gt: 8, $lte: 12 } }, { minExperience: { $gt: 8, $lte: 12 } }] };
+                    if (level.toLowerCase().includes('director') || level.toLowerCase().includes('executive')) return { $or: [{ workExperience: { $gt: 12 } }, { minExperience: { $gt: 12 } }] };
+                    return { $or: [{ workExperience: { $gte: 0 } }, { minExperience: { $gte: 0 } }] };
                 });
-                baseQuery.$or = conditions;
+                baseQuery.$and.push({ $or: conditions });
             }
 
             if (options.isRemote !== undefined) {
@@ -139,15 +150,35 @@ class JobService {
                 { $match: baseQuery },
                 {
                     $addFields: {
+                        normalizedExperience: { $ifNull: ['$workExperience', { $ifNull: ['$minExperience', 0] }] },
+                        normalizedSkills: {
+                            $let: {
+                                vars: {
+                                    rs: { $ifNull: ['$requiredSkills', []] },
+                                    sr: { $ifNull: ['$skillRequired', []] }
+                                },
+                                in: {
+                                    $cond: {
+                                        if: { $gt: [{ $size: '$$rs' }, 0] },
+                                        then: '$$rs',
+                                        else: '$$sr'
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    $addFields: {
                         experience: {
                             $switch: {
                                 branches: [
-                                    { case: { $lte: ['$workExperience', 2] }, then: 'Entry Level' },
-                                    { case: { $lte: ['$workExperience', 5] }, then: 'Mid Level' },
-                                    { case: { $lte: ['$workExperience', 8] }, then: 'Senior Level' },
-                                    { case: { $lte: ['$workExperience', 12] }, then: 'Lead' }
+                                    { case: { $lte: ['$normalizedExperience', 2] }, then: 'Entry Level' },
+                                    { case: { $lte: ['$normalizedExperience', 5] }, then: 'Mid Level' },
+                                    { case: { $lte: ['$normalizedExperience', 8] }, then: 'Senior Level' },
+                                    { case: { $lte: ['$normalizedExperience', 12] }, then: 'Lead' }
                                 ],
-                                default: 'Director'
+                                default: { $ifNull: ['$experienceLevel', 'Director'] }
                             }
                         }
                     }
@@ -196,8 +227,8 @@ class JobService {
                 // Add skill match score
                 {
                     $addFields: {
-                        skillRequired: { $ifNull: ['$skillRequired', []] },
-                        totalRequiredSkills: { $size: { $ifNull: ['$skillRequired', []] } }
+                        skillRequired: '$normalizedSkills',
+                        totalRequiredSkills: { $size: '$normalizedSkills' }
                     }
                 },
                 {
@@ -205,7 +236,7 @@ class JobService {
                         skillMatchCount: {
                             $size: {
                                 $filter: {
-                                    input: { $ifNull: ['$skillRequired', []] },
+                                    input: '$normalizedSkills',
                                     as: 'skill',
                                     cond: {
                                         $in: [
@@ -244,8 +275,8 @@ class JobService {
                             $cond: {
                                 if: {
                                     $and: [
-                                        { $gte: [candidate.overallExperience || 0, '$workExperience'] },
-                                        { $lte: [candidate.overallExperience || 0, '$workExperience'] }
+                                        { $gte: [candidate.overallExperience || 0, '$normalizedExperience'] },
+                                        { $lte: [candidate.overallExperience || 0, '$normalizedExperience'] }
                                     ]
                                 },
                                 then: 1,
@@ -376,27 +407,17 @@ class JobService {
                                 $project: {
                                     _id: 1,
                                     jobId: 1,
-                                    jobTitle: 1,
-                                    jobDescription: 1,
+                                    jobTitle: { $ifNull: ['$jobTitle', '$title'] },
+                                    jobDescription: { $ifNull: ['$jobDescription', '$description'] },
                                     companyId: 1,
                                     jobType: 1,
-                                    workExperience: 1,
-                                    experience: {
-                                        $switch: {
-                                            branches: [
-                                                { case: { $lte: ['$workExperience', 2] }, then: 'Entry Level' },
-                                                { case: { $lte: ['$workExperience', 5] }, then: 'Mid Level' },
-                                                { case: { $lte: ['$workExperience', 8] }, then: 'Senior Level' },
-                                                { case: { $lte: ['$workExperience', 12] }, then: 'Lead' }
-                                            ],
-                                            default: 'Director'
-                                        }
-                                    },
-                                    city: 1,
-                                    state: 1,
-                                    country: 1,
-                                    postedOn: 1,
-                                    lastDate: 1,
+                                    workExperience: '$normalizedExperience',
+                                    experience: 1,
+                                    city: { $ifNull: ['$city', '$location.city'] },
+                                    state: { $ifNull: ['$state', '$location.state'] },
+                                    country: { $ifNull: ['$country', '$location.country'] },
+                                    postedOn: { $ifNull: ['$postedOn', '$postedDate'] },
+                                    lastDate: { $ifNull: ['$lastDate', '$applicationDeadline'] },
                                     jobRole: 1,
                                     matchScore: 1,
                                     matchPercentage: 1,
@@ -598,7 +619,7 @@ class JobService {
         try {
             // 1. Validate job existence and status
             const job = await Job.findById(jobId);
-            if (!job || job.status !== 'APPROVED') {
+            if (!job || (job.status !== 'APPROVED' && job.status !== 'active' && job.status !== undefined)) {
                 throw ApiError.badRequest('This job is no longer accepting applications');
             }
 
@@ -718,7 +739,7 @@ class JobService {
                 .select('savedJobs')
                 .populate({
                     path: 'savedJobs',
-                    select: 'jobTitle title description city state country jobType workExperience postedOn salary companyId',
+                    select: 'jobTitle title description jobDescription city state country location jobType workExperience minExperience postedOn postedDate salary companyId',
                     populate: {
                         path: 'companyId',
                         select: 'companyName'
@@ -774,7 +795,7 @@ class JobService {
             const applications = await Application.find(query)
                 .populate({
                     path: 'job',
-                    select: 'jobTitle title description city state country jobType workExperience postedOn salary companyId',
+                    select: 'jobTitle title description jobDescription city state country location jobType workExperience minExperience postedOn postedDate salary companyId',
                     populate: {
                         path: 'companyId',
                         select: 'companyName'
