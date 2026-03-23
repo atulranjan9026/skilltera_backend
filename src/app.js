@@ -29,6 +29,7 @@ const testRoutes = require('./features/candidates/routes/test.routes');
 const companyRoutes = require('./features/Company/routes/company.routes');
 const jobRoutes = require('./features/Company/routes/job.routes');
 const enterpriseRoutes = require('./features/Company/routes/enterprise.routes');
+const interviewerRoutes = require('./features/Company/routes/interviewer.routes');
 const chatRoutes = require('./features/chat/routes/chat.routes');
 
 /**
@@ -113,6 +114,7 @@ app.use(`/api/${API_VERSION}/candidate/job`, candidateJobRoutes);
 app.use(`/api/${API_VERSION}/company`, companyRoutes);
 app.use(`/api/${API_VERSION}/company`, jobRoutes);
 app.use(`/api/${API_VERSION}/company`, enterpriseRoutes);
+app.use(`/api/${API_VERSION}/company`, interviewerRoutes);
 
 // Chat Routes
 app.use(`/api/${API_VERSION}/chat`, chatRoutes);

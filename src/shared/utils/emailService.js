@@ -398,6 +398,86 @@ The Skilltera Team
             html,
         });
     }
+    /**
+     * Send Interviewer Welcome Email (Account Creation)
+     * @param {string} email - Recipient email
+     * @param {string} name - Recipient name
+     * @param {string} password - Generated password
+     * @param {string} companyName - Company name
+     */
+    async sendInterviewerWelcomeEmail(email, name, password, companyName) {
+        const url = 'https://skilltera.com/company/login';
+
+        const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+          .button { display: inline-block; padding: 12px 30px; background: #11998e; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+          .credentials { background: #e8f5e9; border-left: 4px solid #11998e; padding: 15px; margin: 15px 0; border-radius: 4px; }
+          .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>Welcome to SkillTera!</h1>
+          </div>
+          <div class="content">
+            <h2>Dear ${name},</h2>
+            <p>You have been added as an <strong>Interviewer</strong> at <strong>${companyName}</strong> on Skilltera.</p>
+            <p>Please login using the link below to access your Interviewer Dashboard:</p>
+            <a href="${url}" class="button">Go to Login</a>
+            <div class="credentials">
+              <p><strong>Your Login Credentials:</strong></p>
+              <ul>
+                <li><b>Email:</b> ${email}</li>
+                <li><b>Password:</b> ${password}</li>
+              </ul>
+            </div>
+            <p>Once logged in, you will be able to:</p>
+            <ul>
+              <li>View candidates assigned to you for interviews</li>
+              <li>Review candidate profiles and resumes</li>
+              <li>Submit feedback, ratings, and hiring decisions</li>
+              <li>Communicate with candidates via the messaging system</li>
+            </ul>
+            <p>We recommend changing your password after your first login.</p>
+          </div>
+          <div class="footer">
+            <p>Regards,<br>The Skilltera Team<br>Hire Top Talents in Technology.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+        `;
+
+        const text = `
+Dear ${name},
+
+You have been added as an Interviewer at ${companyName} on Skilltera.
+
+Please login at ${url} with:
+Email: ${email}
+Password: ${password}
+
+Once logged in, you can view assigned candidates and submit interview feedback.
+
+Regards,
+The Skilltera Team
+        `;
+
+        return this.sendEmail({
+            to: email,
+            subject: `Welcome to Skilltera - Your Interviewer Account at ${companyName}`,
+            text,
+            html,
+        });
+    }
 }
 
 // Export singleton instance

@@ -51,13 +51,45 @@ const applicationSchema = new mongoose.Schema(
                 },
                 changedByModel: {
                     type: String,
-                    enum: ['Candidate', 'Company', 'Admin'],
+                    enum: ['Candidate', 'Company', 'Admin', 'HiringManagers', 'Interviewers'],
                 },
                 notes: String,
             },
         ],
         withdrawnAt: Date,
         withdrawnReason: String,
+        assignedInterviewers: [
+            {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: 'Interviewers',
+            },
+        ],
+        interviewFeedback: [
+            {
+                interviewerId: {
+                    type: mongoose.Schema.Types.ObjectId,
+                    ref: 'Interviewers',
+                    required: true,
+                },
+                feedback: {
+                    type: String,
+                    trim: true,
+                },
+                rating: {
+                    type: Number,
+                    min: 1,
+                    max: 5,
+                },
+                decision: {
+                    type: String,
+                    enum: ['accept', 'reject', 'next_round'],
+                },
+                submittedAt: {
+                    type: Date,
+                    default: Date.now,
+                },
+            },
+        ],
     },
     {
         timestamps: true,
