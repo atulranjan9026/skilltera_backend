@@ -20,13 +20,23 @@ exports.initiateConversation = async (req, res) => {
 exports.getUserConversations = async (req, res) => {
     try {
         const userId = req.user._id; // from auth middleware
-        const isCompany = req.user.role === 'company';
-        
+
+        // "Company-side" roles map to the conversation.companyId.
+        // Interviewers store the company reference on req.user.companyId.
+        const companySideRoles = ['company', 'hiring_manager', 'backup_hiring_manager', 'interviewer'];
+        const isCompanySide = companySideRoles.includes(req.userRole);
+
+        const companyId =
+            req.userRole === 'company'
+                ? userId
+                : (req.user.companyId?._id || req.user.companyId);
+
         // Match user to right field based on role
-        const query = isCompany ? { companyId: userId } : { candidateId: userId };
+        const query = isCompanySide ? { companyId } : { candidateId: userId };
+
         const conversations = await Conversation.find(query)
-            .populate('candidateId', 'firstName lastName imageLink') // Adjust fields based on your candidate schema
-            .populate('companyId', 'companyName logoUrl') // Adjust fields based on company schema
+            .populate('candidateId', 'name email phone avatar.url')
+            .populate('companyId', 'companyName imageLink')
             .sort({ updatedAt: -1 });
             
         res.status(200).json({ success: true, conversations });
@@ -39,13 +49,14 @@ exports.getUserConversations = async (req, res) => {
 exports.getMessages = async (req, res) => {
     try {
         const { conversationId } = req.params;
-        const isCompany = req.user.role === 'company';
+        const companySideRoles = ['company', 'hiring_manager', 'backup_hiring_manager', 'interviewer'];
+        const isCompanySide = companySideRoles.includes(req.userRole);
 
         const conversation = await Conversation.findById(conversationId);
         if (!conversation) return res.status(404).json({ error: "Conversation not found" });
 
         // Reset unread count for the requesting user
-        if (isCompany) conversation.companyUnread = 0;
+        if (isCompanySide) conversation.companyUnread = 0;
         else conversation.candidateUnread = 0;
         await conversation.save();
 
