@@ -15,4 +15,7 @@ router.get('/conversations', chatController.getUserConversations);
 // Get messages for a specific conversation
 router.get('/messages/:conversationId', chatController.getMessages);
 
+// Send a message in a conversation
+router.post('/messages', chatController.sendMessage);
+
 module.exports = router;

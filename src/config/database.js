@@ -7,9 +7,16 @@ const logger = require('../shared/utils/logger');
  */
 const connectDB = async () => {
     try {
-        const mongoURI = process.env.NODE_ENV === 'production'
-            ? process.env.MONGO_URI
-            : process.env.MONGO_URI;
+        const rawMongoUri = process.env.NODE_ENV === 'production'
+            ? (process.env.MONGODB_URI || process.env.MONGO_URI)
+            : (process.env.MONGODB_URI || process.env.MONGO_URI);
+
+        if (!rawMongoUri) {
+            logger.error('MONGO_URI is not set. Please configure it in backend .env');
+            process.exit(1);
+        }
+
+        const mongoURI = String(rawMongoUri).replace(/^['"]|['"]$/g, '');
 
         const options = {
             // Connection pool size
@@ -17,7 +24,8 @@ const connectDB = async () => {
             minPoolSize: 2,
 
             // Timeout settings
-            serverSelectionTimeoutMS: 5000,
+            serverSelectionTimeoutMS: 30000,
+            connectTimeoutMS: 30000,
             socketTimeoutMS: 45000,
 
             // Retry settings

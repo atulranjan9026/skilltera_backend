@@ -66,3 +66,36 @@ exports.getMessages = async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 };
+
+// Send a message in a conversation
+exports.sendMessage = async (req, res) => {
+    try {
+        const { conversationId, text } = req.body;
+        if (!conversationId || !text) {
+            return res.status(400).json({ success: false, message: 'conversationId and text are required' });
+        }
+
+        const conversation = await Conversation.findById(conversationId);
+        if (!conversation) {
+            return res.status(404).json({ success: false, message: 'Conversation not found' });
+        }
+
+        const senderId = req.user._id;
+        const message = await Message.create({ conversationId, senderId, text });
+
+        const companySideRoles = ['company', 'hiring_manager', 'backup_hiring_manager', 'interviewer'];
+        const isCompanySide = companySideRoles.includes(req.userRole);
+
+        // Increment unread for receiver
+        if (isCompanySide) {
+            conversation.candidateUnread = (conversation.candidateUnread || 0) + 1;
+        } else {
+            conversation.companyUnread = (conversation.companyUnread || 0) + 1;
+        }
+        await conversation.save();
+
+        res.status(201).json({ success: true, message, conversation });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
