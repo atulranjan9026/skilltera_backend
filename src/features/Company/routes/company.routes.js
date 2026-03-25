@@ -6,7 +6,8 @@ const { companySignup, companyLogin, getCompanyJobs, getCompanyApplications, upd
 const { viewAllCompany, viewAllCompanyList } = require('../controllers/companyManagementController');
 
 // ── Middleware ─────────────────────────────────────────────────
-const { authenticate } = require('../../../shared/middleware/auth.middleware');
+const { authenticate, requireRole } = require('../../../shared/middleware/auth.middleware');
+
 
 // ── Auth Routes ─────────────────────────────────────────────────
 
@@ -41,16 +42,19 @@ router.use('/:companyId', authenticate);
 // @route  GET /api/v1/company/:companyId/jobs
 // @desc   Get all jobs for a specific company
 // @access Private (Company Admin/Hiring Manager)
-router.get('/:companyId/jobs', getCompanyJobs);
+router.get('/:companyId/jobs', requireRole('company', 'hiring_manager', 'backup_hiring_manager'), getCompanyJobs);
+
 
 // @route  GET /api/v1/company/:companyId/applications
 // @desc   Get all applications for company's jobs
 // @access Private (Company Admin/Hiring Manager)
-router.get('/:companyId/applications', getCompanyApplications);
+router.get('/:companyId/applications', requireRole('company', 'hiring_manager', 'backup_hiring_manager'), getCompanyApplications);
+
 
 // @route  PUT /api/v1/company/:companyId/applications/:applicationId
 // @desc   Update application status
 // @access Private (Company Admin/Hiring Manager)
-router.put('/:companyId/applications/:applicationId', updateApplicationStatus);
+router.put('/:companyId/applications/:applicationId', requireRole('company', 'hiring_manager', 'backup_hiring_manager'), updateApplicationStatus);
+
 
 module.exports = router;

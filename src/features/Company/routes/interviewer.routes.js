@@ -11,40 +11,46 @@ router.use(authenticate);
 // Interviewer management
 router.post(
     '/interviewers',
-    requireRole('company', 'hiring_manager'),
+    requireRole('company', 'hiring_manager', 'backup_hiring_manager'),
     interviewerController.createInterviewer
 );
 
+
 router.post(
     '/interviewers/bulk',
-    requireRole('company', 'hiring_manager'),
+    requireRole('company', 'hiring_manager', 'backup_hiring_manager'),
     interviewerController.bulkCreateInterviewers
 );
 
+
 router.get(
     '/interviewers',
-    requireRole('company', 'hiring_manager'),
+    requireRole('company', 'hiring_manager', 'backup_hiring_manager'),
     interviewerController.getInterviewers
 );
 
+
 router.put(
     '/interviewers/:id',
-    requireRole('company', 'hiring_manager'),
+    requireRole('company', 'hiring_manager', 'backup_hiring_manager'),
     interviewerController.updateInterviewer
 );
 
+
 router.delete(
     '/interviewers/:id',
-    requireRole('company', 'hiring_manager'),
+    requireRole('company', 'hiring_manager', 'backup_hiring_manager'),
     interviewerController.deleteInterviewer
 );
+
 
 // Assignment
 router.post(
     '/interviewers/assign',
-    requireRole('company', 'hiring_manager'),
+    requireRole('company', 'hiring_manager', 'backup_hiring_manager'),
     interviewerController.assignInterviewers
 );
+
 
 // ─── Interviewer-Only Routes ──────────────────────────────────────────────────
 
