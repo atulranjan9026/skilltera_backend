@@ -84,10 +84,16 @@ const authenticate = asyncHandler(async (req, res, next) => {
     
     // Determine role - use token role first, but fallback to model detection
     let finalRole = role;
-    if (user && user.constructor.modelName === 'Company') {
+    if (user && user.constructor.modelName === 'Companies') {
         finalRole = 'company';
     } else if (user && user.constructor.modelName === 'Candidate') {
         finalRole = 'candidate';
+    } else if (user && user.constructor.modelName === 'HiringManagers') {
+        finalRole = 'hiring_manager';
+    } else if (user && user.constructor.modelName === 'BackupHiringManagers') {
+        finalRole = 'backup_hiring_manager';
+    } else if (user && user.constructor.modelName === 'Interviewers') {
+        finalRole = 'interviewer';
     }
     
     req.userRole = finalRole;
@@ -172,6 +178,11 @@ const requireAuth = asyncHandler(async (req, res, next) => {
  * @param {...string} roles - Required roles
  */
 const requireRole = (...roles) => {
+    // Handle both array and individual arguments
+    if (roles.length === 1 && Array.isArray(roles[0])) {
+        roles = roles[0]; // Unwrap the array
+    }
+    
     return asyncHandler(async (req, res, next) => {
         if (!req.user) {
             throw ApiError.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
@@ -181,16 +192,19 @@ const requireRole = (...roles) => {
         
         // If no role is set, try to determine from user model
         if (!userRole && req.user) {
-            if (req.user.constructor.modelName === 'Company') {
+            // Check both model names and collection names
+            if (req.user.constructor.modelName === 'Companies' || req.user.constructor.modelName === 'Company') {
                 userRole = 'company';
+            } else if (req.user.constructor.modelName === 'HiringManagers' || req.user.constructor.modelName === 'HiringManager') {
+                userRole = 'hiring_manager';
+            } else if (req.user.constructor.modelName === 'BackupHiringManagers' || req.user.constructor.modelName === 'BackupHiringManager') {
+                userRole = 'backup_hiring_manager';
             } else if (req.user.constructor.modelName === 'Candidate') {
                 userRole = 'candidate';
+            } else if (req.user.constructor.modelName === 'Interviewers' || req.user.constructor.modelName === 'Interviewer') {
+                userRole = 'interviewer';
             }
         }
-
-        // console.log(`Role check - User role: ${userRole}, Required roles: ${roles.join(', ')}`);
-        // TEMP DEBUG (remove after verifying in logs):
-        // console.log('Role check:', { userRole, required: roles, path: req.originalUrl, user: req.user?.email, userConstructor: req.user?.constructor?.modelName });
 
         if (!roles.includes(userRole)) {
             throw ApiError.forbidden(ERROR_MESSAGES.FORBIDDEN);

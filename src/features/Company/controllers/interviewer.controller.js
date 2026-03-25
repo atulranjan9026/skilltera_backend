@@ -30,8 +30,11 @@ exports.createInterviewer = asyncHandler(async (req, res) => {
         throw ApiError.badRequest('Name and email are required');
     }
 
-    // Determine companyId — caller is either 'company' or 'hiring_manager'
+    // Determine companyId — caller is either 'company', 'hiring_manager', or 'backup_hiring_manager'
     const companyId = req.user.companyId || req.user._id;
+    const hiringManagerId = req.userRole === 'hiring_manager' ? req.user._id : null;
+    const backupHiringManagerId = req.userRole === 'backup_hiring_manager' ? req.user._id : null;
+
 
     const existing = await Interviewer.findOne({ email: email.toLowerCase() });
     if (existing) {
@@ -46,12 +49,14 @@ exports.createInterviewer = asyncHandler(async (req, res) => {
         email: email.toLowerCase(),
         password: hashedPassword,
         companyId,
+        hiringManagerId,
+        backupHiringManagerId,
         registrationDate: new Date().toISOString(),
     });
 
     // Resolve company name for email
     const companyName =
-        req.user.companyName ||
+        req.user.name ||
         (req.user.companyId?.companyName) ||
         'Your Company';
 
@@ -77,7 +82,10 @@ exports.bulkCreateInterviewers = asyncHandler(async (req, res) => {
     }
 
     const companyId = req.user.companyId || req.user._id;
+    const hiringManagerId = req.userRole === 'hiring_manager' ? req.user._id : null;
+    const backupHiringManagerId = req.userRole === 'backup_hiring_manager' ? req.user._id : null;
     const companyName = req.user.companyName || req.user.companyId?.companyName || 'Your Company';
+
 
     const results = [];
 
@@ -98,6 +106,8 @@ exports.bulkCreateInterviewers = asyncHandler(async (req, res) => {
                 email: email.toLowerCase(),
                 password: hashedPassword,
                 companyId,
+                hiringManagerId,
+                backupHiringManagerId,
                 registrationDate: new Date().toISOString(),
             });
 

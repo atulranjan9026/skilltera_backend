@@ -8,6 +8,7 @@ const ROLES = {
     ADMIN: 'admin',
     HIRING_MANAGER: 'hiring_manager',
     INTERVIEWER: 'interviewer',
+    BACKUP_HIRING_MANAGER: 'backup_hiring_manager',
 };
 
 /**

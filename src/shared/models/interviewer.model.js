@@ -30,6 +30,17 @@ const interviewerSchema = new mongoose.Schema(
             ref: 'Companies',
             required: true,
         },
+        hiringManagerId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'HiringManagers',
+            default: null,
+        },
+        backupHiringManagerId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'BackupHiringManagers',
+            default: null,
+        },
+
         active: {
             type: Boolean,
             default: true,

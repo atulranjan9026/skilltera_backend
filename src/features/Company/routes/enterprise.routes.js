@@ -7,7 +7,11 @@ const router = express.Router();
 
 // Apply authentication middleware to all routes
 router.use(authenticate);
-router.use(requireRole('company'));
+
+// NOTE: We don't use global requireRole('company') here because it would conflict 
+// with other routers mounted at the same base path (like interviewer.routes.js)
+// Instead, we apply it to specific route groups or routes.
+
 
 // ─── LOB Routes ────────────────────────────────────────────────────────────────
 
@@ -23,11 +27,11 @@ const bulkLOBValidation = [
   body('items.*.description').optional().trim().isLength({ max: 500 }).withMessage('Description must not exceed 500 characters')
 ];
 
-router.get('/lobs', enterpriseController.getAllLOBs);
-router.post('/lobs', lobValidation, enterpriseController.createLOB);
-router.put('/lobs/:id', lobValidation, enterpriseController.updateLOB);
-router.delete('/lobs/:id', enterpriseController.deleteLOB);
-router.post('/lobs/bulk', bulkLOBValidation, enterpriseController.bulkCreateLOBs);
+router.get('/lobs', requireRole('company'), enterpriseController.getAllLOBs);
+router.post('/lobs', requireRole('company'), lobValidation, enterpriseController.createLOB);
+router.put('/lobs/:id', requireRole('company'), lobValidation, enterpriseController.updateLOB);
+router.delete('/lobs/:id', requireRole('company'), enterpriseController.deleteLOB);
+router.post('/lobs/bulk', requireRole('company'), bulkLOBValidation, enterpriseController.bulkCreateLOBs);
 
 // ─── Hiring Manager Routes ─────────────────────────────────────────────────────
 
@@ -43,11 +47,11 @@ const bulkHiringManagerValidation = [
   body('items.*.email').isEmail().normalizeEmail().withMessage('Valid email is required')
 ];
 
-router.get('/hiring-managers', enterpriseController.getAllHiringManagers);
-router.post('/hiring-managers', hiringManagerValidation, enterpriseController.createHiringManager);
-router.put('/hiring-managers/:id', hiringManagerValidation, enterpriseController.updateHiringManager);
-router.delete('/hiring-managers/:id', enterpriseController.deleteHiringManager);
-router.post('/hiring-managers/bulk', bulkHiringManagerValidation, enterpriseController.bulkCreateHiringManagers);
+router.get('/hiring-managers', requireRole('company'), enterpriseController.getAllHiringManagers);
+router.post('/hiring-managers', requireRole('company'), hiringManagerValidation, enterpriseController.createHiringManager);
+router.put('/hiring-managers/:id', requireRole('company'), hiringManagerValidation, enterpriseController.updateHiringManager);
+router.delete('/hiring-managers/:id', requireRole('company'), enterpriseController.deleteHiringManager);
+router.post('/hiring-managers/bulk', requireRole('company'), bulkHiringManagerValidation, enterpriseController.bulkCreateHiringManagers);
 
 // ─── Backup Hiring Manager Routes ───────────────────────────────────────────────
 
@@ -58,10 +62,10 @@ const backupHiringManagerValidation = [
   body('hiringManagerId').optional({ checkFalsy: true }).isMongoId().withMessage('Invalid hiring manager ID')
 ];
 
-router.get('/backup-hiring-managers', enterpriseController.getAllBackupHiringManagers);
-router.post('/backup-hiring-managers', backupHiringManagerValidation, enterpriseController.createBackupHiringManager);
-router.put('/backup-hiring-managers/:id', backupHiringManagerValidation, enterpriseController.updateBackupHiringManager);
-router.delete('/backup-hiring-managers/:id', enterpriseController.deleteBackupHiringManager);
+router.get('/backup-hiring-managers', requireRole('company'), enterpriseController.getAllBackupHiringManagers);
+router.post('/backup-hiring-managers', requireRole('company'), backupHiringManagerValidation, enterpriseController.createBackupHiringManager);
+router.put('/backup-hiring-managers/:id', requireRole('company'), backupHiringManagerValidation, enterpriseController.updateBackupHiringManager);
+router.delete('/backup-hiring-managers/:id', requireRole('company'), enterpriseController.deleteBackupHiringManager);
 
 // ─── Recruiter Routes ───────────────────────────────────────────────────────────
 
@@ -79,10 +83,10 @@ const bulkRecruiterValidation = [
   body('items.*.keySkills').optional().isString().withMessage('Key skills must be a string')
 ];
 
-router.get('/recruiters', enterpriseController.getAllRecruiters);
-router.post('/recruiters', recruiterValidation, enterpriseController.createRecruiter);
-router.put('/recruiters/:id', recruiterValidation, enterpriseController.updateRecruiter);
-router.delete('/recruiters/:id', enterpriseController.deleteRecruiter);
-router.post('/recruiters/bulk', bulkRecruiterValidation, enterpriseController.bulkCreateRecruiters);
+router.get('/recruiters', requireRole('company'), enterpriseController.getAllRecruiters);
+router.post('/recruiters', requireRole('company'), recruiterValidation, enterpriseController.createRecruiter);
+router.put('/recruiters/:id', requireRole('company'), recruiterValidation, enterpriseController.updateRecruiter);
+router.delete('/recruiters/:id', requireRole('company'), enterpriseController.deleteRecruiter);
+router.post('/recruiters/bulk', requireRole('company'), bulkRecruiterValidation, enterpriseController.bulkCreateRecruiters);
 
 module.exports = router;
