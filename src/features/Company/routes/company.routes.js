@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 // ── Controllers ─────────────────────────────────────────────────
-const { companySignup, companyLogin, getCompanyJobs, getCompanyApplications, updateApplicationStatus } = require('../controllers/company.controller');
+const { companySignup, companyLogin, getCompanyJobs, getCompanyApplications, updateApplicationStatus, getCandidateTestResults } = require('../controllers/company.controller');
 const { viewAllCompany, viewAllCompanyList } = require('../controllers/companyManagementController');
 
 // ── Middleware ─────────────────────────────────────────────────
@@ -56,5 +56,9 @@ router.get('/:companyId/applications', requireRole('company', 'hiring_manager', 
 // @access Private (Company Admin/Hiring Manager)
 router.put('/:companyId/applications/:applicationId', requireRole('company', 'hiring_manager', 'backup_hiring_manager'), updateApplicationStatus);
 
+// @route  GET /api/v1/company/:companyId/test-results/:candidateId
+// @desc   Get skill assessment test results for a candidate
+// @access Private (Company Admin/Hiring Manager)
+router.get('/:companyId/test-results/:candidateId', requireRole('company', 'hiring_manager', 'backup_hiring_manager'), getCandidateTestResults);
 
 module.exports = router;

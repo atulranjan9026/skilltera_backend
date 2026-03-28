@@ -96,6 +96,7 @@ const API_VERSION = process.env.API_VERSION || 'v1';
 // Candidate Routes
 app.use(`/api/${API_VERSION}/candidates/auth`, candidateAuthRoutes);
 app.use(`/api/${API_VERSION}/candidates/profile`, candidateProfileRoutes);
+app.use(`/api/${API_VERSION}/candidate/profile`, candidateProfileRoutes); // Supporting both singular and plural
 app.use(`/api/${API_VERSION}/candidates/job`, candidateJobRoutes);
 
 // Alias route for saved jobs

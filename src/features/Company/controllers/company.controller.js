@@ -13,6 +13,7 @@ const BackupHiringManager = require('../../../shared/models/backupHiringManager.
 const Interviewer = require('../../../shared/models/interviewer.model');
 const Job = require('../../../shared/models/job.model');
 const Candidate = require('../../candidates/models/candidate.model');
+const Test = require('../../candidates/models/test.model');
 const { ObjectId } = require('mongodb');
 /**
  * Company Signup
@@ -496,4 +497,74 @@ exports.updateApplicationStatus = asyncHandler(async (req, res) => {
         appDoc,
         `Application status updated to ${status}`
     ).send(res);
+});
+
+/**
+ * Get Candidate Test Results (Company view)
+ * @route   GET /api/v1/company/:companyId/test-results/:candidateId
+ * @access  Private (Company Admin/Hiring Manager)
+ */
+exports.getCandidateTestResults = asyncHandler(async (req, res) => {
+    const { companyId, candidateId } = req.params;
+
+    if (!candidateId || !ObjectId.isValid(candidateId)) {
+        throw ApiError.badRequest('Invalid candidate ID');
+    }
+
+    const candidate = await Candidate.findById(candidateId)
+        .select('fullname email phone skills')
+        .lean();
+
+    if (!candidate) {
+        throw ApiError.notFound('Candidate not found');
+    }
+
+    const test = await Test.findOne({ candidateId, testLimit: true, practiceMode: { $ne: true } })
+        .select('overallScore finalScore rating typeOfTest skillNeedToTest techAnalysis summary evaluations nonTechnicalProblems testTakenDate createdAt updatedAt violation')
+        .sort({ updatedAt: -1 })
+        .lean();
+
+    if (!test) {
+        return new ApiResponse(HTTP_STATUS.OK, {
+            hasTestData: false,
+            testData: null,
+        }, 'No test data found for this candidate').send(res);
+    }
+
+    const formattedData = {
+        hasTestData: true,
+        _id: test._id,
+        testType: test.typeOfTest || 'N/A',
+        overallScore: test.overallScore ?? test.finalScore ?? 0,
+        rating: test.rating || 'NOT_RATED',
+        skillsTested: test.skillNeedToTest || [],
+        evaluations: (test.evaluations || []).map(evaluation => ({
+            problem: evaluation.problem || 'No problem data',
+            solution: evaluation.solution || 'No solution data',
+            evaluation: evaluation.evaluation || 'No evaluation data',
+        })),
+        nonTechnicalProblems: test.nonTechnicalProblems || [],
+        technicalAnalysis: test.techAnalysis ? {
+            totalPenalty: test.techAnalysis.total_penalty || 0,
+            mismatches: (test.techAnalysis.mismatch_details || []).map(m => ({
+                problem: m.problem || 'N/A',
+                expected: m.expected || 'N/A',
+                submitted: m.submitted || 'N/A',
+                severity: m.severity || 'N/A',
+            })),
+        } : null,
+        summary: test.summary ? {
+            passedCount: test.summary.passedCount || 0,
+            totalPenalty: test.summary.totalPenalty || 0,
+            criticalMismatches: test.summary.criticalMismatches || 0,
+            recommendations: test.summary.recommendations || [],
+        } : null,
+        violationCount: (test.violation || []).length,
+        testDate: test.testTakenDate || test.createdAt,
+    };
+
+    return new ApiResponse(HTTP_STATUS.OK, {
+        hasTestData: true,
+        testData: formattedData,
+    }, 'Test results retrieved successfully').send(res);
 });
